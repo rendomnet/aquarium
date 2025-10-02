@@ -1,4 +1,36 @@
 import * as THREE from "three";
+import { GUI } from "lil-gui";
+
+      // ========== AQUARIUM CONFIGURATION ==========
+      // Adjust these values to customize the aquarium appearance and behavior
+      const CONFIG = {
+        // Caustics settings (light ripples from water surface)
+        caustics: {
+          floorOpacity: 0.22,           // Caustics brightness on floor (0.0-1.0)
+          fishIntensity: 0.25,          // Caustics brightness on fish (0.0 = none, 0.5 = strong) - REDUCED for less frequency
+          fishBaseLight: 0.85,          // Base lighting on fish (0.8 = darker, 1.0 = no darkening) - INCREASED for brighter fish
+          scale: 0.15,                  // Caustics pattern scale on fish (smaller = tighter pattern)
+          driftSpeed: 0.7,              // Caustics animation speed (1.0 = normal, 0.5 = slower) - REDUCED for calmer effect
+        },
+        
+        // Fish animation settings
+        animation: {
+          tailDragStrength: 0.3,        // How much tail lags when turning (0.0-1.0)
+          speedResponseMin: 0.6,        // Minimum animation speed when stationary
+          speedResponseMax: 1.8,        // Maximum animation speed when swimming fast
+          amplitudeMin: 0.7,            // Minimum tail amplitude
+          amplitudeMax: 1.6,            // Maximum tail amplitude
+          smoothingSpeed: 0.85,         // Speed smoothing (0.0-1.0, higher = smoother)
+          smoothingTurn: 0.7,           // Turn smoothing (0.0-1.0, higher = smoother)
+        },
+        
+        // Visual settings
+        scene: {
+          fogDensity: 0.055,            // Underwater fog density
+          ambientLight: 0.55,           // Ambient light intensity
+          directionalLight: 0.7,        // Directional light intensity
+        }
+      };
 
       // ---------- renderer / scene / camera ----------
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -7,7 +39,7 @@ import * as THREE from "three";
       document.body.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0x0b2233, 0.055);
+      scene.fog = new THREE.FogExp2(0x0b2233, CONFIG.scene.fogDensity);
 
       const camera = new THREE.PerspectiveCamera(
         55,
@@ -19,8 +51,8 @@ import * as THREE from "three";
       camera.lookAt(0, 0.5, 0);
 
       // ---------- lights ----------
-      scene.add(new THREE.AmbientLight(0x79a8ff, 0.55));
-      const key = new THREE.DirectionalLight(0x9ad1ff, 0.7);
+      scene.add(new THREE.AmbientLight(0x79a8ff, CONFIG.scene.ambientLight));
+      const key = new THREE.DirectionalLight(0x9ad1ff, CONFIG.scene.directionalLight);
       key.position.set(6, 12, 8);
       scene.add(key);
 
@@ -60,7 +92,7 @@ import * as THREE from "three";
         new THREE.MeshBasicMaterial({
           map: causticsTex,
           transparent: true,
-          opacity: 0.22,
+          opacity: CONFIG.caustics.floorOpacity,
           depthWrite: false,
         })
       );
@@ -78,9 +110,19 @@ import * as THREE from "three";
         depthWrite: false,
         uniforms: {
           uTex: { value: null },
+          uCaustics: { value: causticsTex },  // Caustics texture
+          uCausticsScale: { value: CONFIG.caustics.scale },
+          uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
+          uCausticsIntensity: { value: CONFIG.caustics.fishIntensity },
+          uCausticsBase: { value: CONFIG.caustics.fishBaseLight },
           uTime: { value: 0 },
           uSwimSpeed: { value: 0.0 },  // Fish's actual swimming speed
           uTurnAmount: { value: 0.0 },  // How much the fish is turning (for drag effect)
+          uDragStrength: { value: CONFIG.animation.tailDragStrength },
+          uSpeedMin: { value: CONFIG.animation.speedResponseMin },
+          uSpeedMax: { value: CONFIG.animation.speedResponseMax },
+          uAmpMin: { value: CONFIG.animation.amplitudeMin },
+          uAmpMax: { value: CONFIG.animation.amplitudeMax },
           // Anatomical part system - up to 6 parts per fish
           uPartCount: { value: 0 },
           // Each part: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset]
@@ -92,10 +134,14 @@ import * as THREE from "three";
     uniform float uTime;
     uniform float uSwimSpeed;  // Fish's actual swimming speed
     uniform float uTurnAmount;  // How much the fish is turning
+    uniform float uDragStrength;  // Drag strength from config
+    uniform float uSpeedMin, uSpeedMax;  // Speed response range
+    uniform float uAmpMin, uAmpMax;  // Amplitude range
     uniform int uPartCount;
     uniform float uParts[54]; // 6 parts × 9 values each
     uniform float uGridProps[7]; // [row1, row2, row3, col1, col2, col3, col4] proportions
     varying vec2 vUv;
+    varying vec3 vWorldPos;  // World position for caustics
     
     void main() {
       vUv = uv;
@@ -202,17 +248,18 @@ import * as THREE from "three";
       float isTailFin = (vUv.x < gridCol1End) ? 1.0 : 0.0;
       
       // Tail base gets strong speed modulation, tail fin gets weak modulation
-      float speedModulator = clamp(0.6 + uSwimSpeed * (0.5 + isTailBase * 0.8), 0.6, 1.8);  // Tail base: 0.6-1.8, others: 0.6-1.1
+      // Use config values for min/max ranges
+      float speedModulator = clamp(uSpeedMin + uSwimSpeed * (0.5 + isTailBase * 0.8), uSpeedMin, uSpeedMax);
       float phase = uTime * finalSpeed * speedModulator + vUv.x * finalFrequency + finalPhase;
       
       // Main tail sway - side to side (Z axis)
       // Tail base amplitude increases with speed, tail fin stays more constant
-      float amplitudeModulator = clamp(0.7 + uSwimSpeed * (0.4 + isTailBase * 0.6), 0.7, 1.6);
+      float amplitudeModulator = clamp(uAmpMin + uSwimSpeed * (0.4 + isTailBase * 0.6), uAmpMin, uAmpMax);
       float sway = sin(phase) * finalAmplitude * totalFlexibility * amplitudeModulator;
       
       // Add drag/lag effect - tail lags behind when turning
       // The farther from the head (lower vUv.x), the more lag
-      float dragAmount = (1.0 - vUv.x) * uTurnAmount * totalFlexibility * 0.3;
+      float dragAmount = (1.0 - vUv.x) * uTurnAmount * totalFlexibility * uDragStrength;
       sway += dragAmount;
       
       // Small vertical undulation (Y axis) - much less than horizontal
@@ -233,20 +280,98 @@ import * as THREE from "three";
       );
       pos = rZ * pos;
 
+      // Calculate world position for caustics
+      vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+      vWorldPos = worldPos.xyz;
+
       gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     }
   `,
         fragmentShader: /*glsl*/ `
     uniform sampler2D uTex;
+    uniform sampler2D uCaustics;
+    uniform float uTime;
+    uniform float uCausticsScale;
+    uniform float uCausticsDrift;
+    uniform float uCausticsIntensity;
+    uniform float uCausticsBase;
     varying vec2 vUv;
+    varying vec3 vWorldPos;
+    
     void main() {
       vec4 c = texture2D(uTex, vUv);
       if (c.a < 0.08) discard;
+      
+      // Sample caustics based on world position (animated)
+      // Note: scale and drift speed are passed as uniforms
+      vec2 causticsUV = vWorldPos.xz * uCausticsScale + vec2(uTime * uCausticsDrift * 0.03, uTime * uCausticsDrift * 0.018);
+      vec4 caustics = texture2D(uCaustics, causticsUV);
+      
+      // Apply caustics as a subtle brightness modulation
+      float causticsIntensity = caustics.r * uCausticsIntensity + uCausticsBase;
+      c.rgb *= causticsIntensity;
+      
       gl_FragColor = c;
     }
   `,
       });
 
+      // ---------- GUI Controls ----------
+      const gui = new GUI({ title: '🐠 Aquarium Controls' });
+      
+      // Caustics folder
+      const causticsFolder = gui.addFolder('Caustics (Light Ripples)');
+      causticsFolder.add(CONFIG.caustics, 'floorOpacity', 0, 1, 0.01).name('Floor Brightness').onChange(v => {
+        caustics.material.opacity = v;
+      });
+      causticsFolder.add(CONFIG.caustics, 'fishIntensity', 0, 0.8, 0.01).name('Fish Intensity').onChange(v => {
+        fishMat.uniforms.uCausticsIntensity.value = v;
+      });
+      causticsFolder.add(CONFIG.caustics, 'fishBaseLight', 0.5, 1.0, 0.01).name('Fish Base Light').onChange(v => {
+        fishMat.uniforms.uCausticsBase.value = v;
+      });
+      causticsFolder.add(CONFIG.caustics, 'scale', 0.05, 0.5, 0.01).name('Pattern Scale').onChange(v => {
+        fishMat.uniforms.uCausticsScale.value = v;
+      });
+      causticsFolder.add(CONFIG.caustics, 'driftSpeed', 0, 2, 0.1).name('Animation Speed').onChange(v => {
+        fishMat.uniforms.uCausticsDrift.value = v;
+      });
+      
+      // Animation folder
+      const animFolder = gui.addFolder('Fish Animation');
+      animFolder.add(CONFIG.animation, 'tailDragStrength', 0, 1, 0.05).name('Tail Drag').onChange(v => {
+        fishMat.uniforms.uDragStrength.value = v;
+      });
+      animFolder.add(CONFIG.animation, 'speedResponseMin', 0.1, 1.0, 0.05).name('Min Speed Response').onChange(v => {
+        fishMat.uniforms.uSpeedMin.value = v;
+      });
+      animFolder.add(CONFIG.animation, 'speedResponseMax', 1.0, 3.0, 0.1).name('Max Speed Response').onChange(v => {
+        fishMat.uniforms.uSpeedMax.value = v;
+      });
+      animFolder.add(CONFIG.animation, 'amplitudeMin', 0.3, 1.0, 0.05).name('Min Amplitude').onChange(v => {
+        fishMat.uniforms.uAmpMin.value = v;
+      });
+      animFolder.add(CONFIG.animation, 'amplitudeMax', 1.0, 2.5, 0.1).name('Max Amplitude').onChange(v => {
+        fishMat.uniforms.uAmpMax.value = v;
+      });
+      animFolder.add(CONFIG.animation, 'smoothingSpeed', 0.5, 0.95, 0.01).name('Speed Smoothing');
+      animFolder.add(CONFIG.animation, 'smoothingTurn', 0.5, 0.95, 0.01).name('Turn Smoothing');
+      
+      // Scene folder
+      const sceneFolder = gui.addFolder('Scene');
+      sceneFolder.add(CONFIG.scene, 'fogDensity', 0, 0.2, 0.005).name('Fog Density').onChange(v => {
+        scene.fog.density = v;
+      });
+      sceneFolder.add(CONFIG.scene, 'ambientLight', 0, 1, 0.05).name('Ambient Light').onChange(v => {
+        scene.children.find(c => c.isAmbientLight).intensity = v;
+      });
+      sceneFolder.add(CONFIG.scene, 'directionalLight', 0, 2, 0.1).name('Directional Light').onChange(v => {
+        key.intensity = v;
+      });
+      
+      // Open caustics folder by default
+      causticsFolder.open();
+      
       // ---------- school of fish ----------
       const UI = {
         speed: document.getElementById("speed"),
@@ -712,7 +837,7 @@ import * as THREE from "three";
           
           // Smooth the speed to avoid jittery animation
           brain.smoothSpeed = brain.smoothSpeed || 0;
-          brain.smoothSpeed = brain.smoothSpeed * 0.85 + normalizedSpeed * 0.15;
+          brain.smoothSpeed = brain.smoothSpeed * CONFIG.animation.smoothingSpeed + normalizedSpeed * (1.0 - CONFIG.animation.smoothingSpeed);
           
           // Calculate turn amount (change in direction)
           const currentDir = Math.atan2(dy, dx);
@@ -725,7 +850,7 @@ import * as THREE from "three";
           
           // Smooth turn amount
           brain.smoothTurn = brain.smoothTurn || 0;
-          brain.smoothTurn = brain.smoothTurn * 0.7 + dirChange * 0.3;
+          brain.smoothTurn = brain.smoothTurn * CONFIG.animation.smoothingTurn + dirChange * (1.0 - CONFIG.animation.smoothingTurn);
           brain.prevDir = currentDir;
           
           if (Math.abs(dx) > 0.001) {
