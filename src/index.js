@@ -4,13 +4,12 @@ import { GUI } from "lil-gui";
       // ========== AQUARIUM CONFIGURATION ==========
       // Adjust these values to customize the aquarium appearance and behavior
       const CONFIG = {
-        // Caustics settings (light ripples from water surface)
+        // Caustics settings (light ripples from water surface on fish)
         caustics: {
-          floorOpacity: 0.22,           // Caustics brightness on floor (0.0-1.0)
-          fishIntensity: 0.25,          // Caustics brightness on fish (0.0 = none, 0.5 = strong) - REDUCED for less frequency
-          fishBaseLight: 0.85,          // Base lighting on fish (0.8 = darker, 1.0 = no darkening) - INCREASED for brighter fish
+          fishIntensity: 0.25,          // Caustics brightness on fish (0.0 = none, 0.5 = strong)
+          fishBaseLight: 0.85,          // Base lighting on fish (0.8 = darker, 1.0 = no darkening)
           scale: 0.15,                  // Caustics pattern scale on fish (smaller = tighter pattern)
-          driftSpeed: 0.7,              // Caustics animation speed (1.0 = normal, 0.5 = slower) - REDUCED for calmer effect
+          driftSpeed: 0.7,              // Caustics animation speed (1.0 = normal, 0.5 = slower)
         },
         
         // Fish animation settings
@@ -56,49 +55,11 @@ import { GUI } from "lil-gui";
       key.position.set(6, 12, 8);
       scene.add(key);
 
-      // ---------- background "tank" ----------
-      const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(60, 60),
-        new THREE.MeshPhongMaterial({ color: 0x0a1b27, shininess: 2 })
-      );
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -3;
-      scene.add(floor);
-
-      // Low-poly rock silhouette (cheap depth cue)
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(2.2, 0),
-        new THREE.MeshStandardMaterial({
-          color: 0x0c2030,
-          roughness: 1,
-          metalness: 0,
-        })
-      );
-      rock.position.set(-2.2, -2.2, -3.5);
-      scene.add(rock);
-
       // ---------- textures ----------
       const loader = new THREE.TextureLoader();
       const causticsTex = loader.load("/images/caustics.jpg");
       causticsTex.wrapS = causticsTex.wrapT = THREE.RepeatWrapping;
       causticsTex.repeat.set(6, 6);
-
-      const bubbleTex = loader.load("/images/bubble.png");
-      bubbleTex.wrapS = bubbleTex.wrapT = THREE.ClampToEdgeWrapping;
-
-      // ---------- moving caustics projector (simple quad overhead) ----------
-      const caustics = new THREE.Mesh(
-        new THREE.PlaneGeometry(60, 60),
-        new THREE.MeshBasicMaterial({
-          map: causticsTex,
-          transparent: true,
-          opacity: CONFIG.caustics.floorOpacity,
-          depthWrite: false,
-        })
-      );
-      caustics.rotation.x = Math.PI / 2;
-      caustics.position.y = 4.5;
-      scene.add(caustics);
 
       // ---------- fish shader (plane + sine tail) ----------
       const FISH_SEG_X = 64,
@@ -321,9 +282,6 @@ import { GUI } from "lil-gui";
       
       // Caustics folder
       const causticsFolder = gui.addFolder('Caustics (Light Ripples)');
-      causticsFolder.add(CONFIG.caustics, 'floorOpacity', 0, 1, 0.01).name('Floor Brightness').onChange(v => {
-        caustics.material.opacity = v;
-      });
       causticsFolder.add(CONFIG.caustics, 'fishIntensity', 0, 0.8, 0.01).name('Fish Intensity').onChange(v => {
         fishMat.uniforms.uCausticsIntensity.value = v;
       });
@@ -704,9 +662,10 @@ import { GUI } from "lil-gui";
           facingDir: facingDir,
           baseScaleX: baseScaleX,
           baseScaleY: baseScaleY,
-          // Movement direction
-          targetX: (Math.random() - 0.5) * 8,
-          targetY: -0.5 + Math.random() * 2.5
+          // Vertical movement targets
+          targetDepth: height,
+          depthChangeTime: 0,
+          depthChangeDuration: 3 + Math.random() * 4, // Change depth every 3-7 seconds
         };
         
         m.position.set(startX, height, startZ);
@@ -729,30 +688,6 @@ import { GUI } from "lil-gui";
         scene.add(f);
         fishes.push(f);
       });
-
-      // ---------- bubble particles ----------
-      const BUBBLE_COUNT = 120;
-      const bubbleGeo = new THREE.BufferGeometry();
-      const pos = new Float32Array(BUBBLE_COUNT * 3);
-      const vel = new Float32Array(BUBBLE_COUNT);
-      for (let i = 0; i < BUBBLE_COUNT; i++) {
-        pos[i * 3 + 0] = (Math.random() - 0.5) * 8;
-        pos[i * 3 + 1] = -2.5 + Math.random() * 2.5;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * 8;
-        vel[i] = 0.4 + Math.random() * 0.6;
-      }
-      bubbleGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      bubbleGeo.setAttribute("aVel", new THREE.BufferAttribute(vel, 1));
-
-      const bubbleMat = new THREE.PointsMaterial({
-        map: bubbleTex,
-        size: 0.08,
-        transparent: true,
-        depthWrite: false,
-        opacity: 0.8,
-      });
-      const bubbles = new THREE.Points(bubbleGeo, bubbleMat);
-      scene.add(bubbles);
 
       // ---------- animate ----------
       const clock = new THREE.Clock();
@@ -783,10 +718,21 @@ import { GUI } from "lil-gui";
           const swimInDuration = 3.0;
           let swimInProgress = Math.min(timeSinceSpawn / swimInDuration, 1.0);
           
+          // Check if it's time to change depth target
+          if (t - brain.depthChangeTime > brain.depthChangeDuration) {
+            brain.depthChangeTime = t;
+            brain.depthChangeDuration = 3 + Math.random() * 4;
+            // Pick a new target depth - full range from bottom to top
+            brain.targetDepth = -1.5 + Math.random() * 4.0; // -1.5 to 2.5 (full tank height)
+          }
+          
+          // Smoothly move toward target depth
+          brain.baseY += (brain.targetDepth - brain.baseY) * 0.3 * dt;
+          
           // Natural swimming with directional movement
           const wanderX = Math.sin(t * brain.wanderSpeed + brain.phase) * brain.wanderRange;
           const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 1.2;
-          const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.4;
+          const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3; // Reduced, since baseY now changes
           
           const prevX = f.position.x;
           const prevY = f.position.y;
@@ -796,7 +742,7 @@ import { GUI } from "lil-gui";
           f.position.z = brain.baseZ + wanderZ;
           f.position.y = brain.baseY + wanderY;
 
-          // Wrap around if fish goes too far
+          // Wrap around if fish goes too far horizontally
           if (f.position.x > 7) { 
             f.position.x = -7; 
             brain.baseX = -5 + Math.random() * 2;
@@ -805,27 +751,52 @@ import { GUI } from "lil-gui";
             f.position.x = 7; 
             brain.baseX = 3 + Math.random() * 2;
           }
-          if (f.position.y > 2.5) {
-            brain.baseY = -0.3 + Math.random() * 1.5;
-          }
-          if (f.position.y < -1.0) {
-            brain.baseY = 0.5 + Math.random() * 1.5;
-          }
+          
+          // Keep fish within tank depth (Z axis)
           if (f.position.z > 3) { brain.baseZ = -2; }
           if (f.position.z < -3) { brain.baseZ = 2; }
-
-          // Keep fish facing camera (no rotation) - billboard effect
-          f.rotation.set(0, 0, 0);
           
+          // Clamp vertical position to tank bounds
+          f.position.y = Math.max(-2.0, Math.min(2.8, f.position.y));
+
           // Update scale based on depth and direction
           const depthScale = 1.0 - (f.position.z + 3) * 0.08;
           const finalScaleX = brain.baseScaleX * depthScale;
           const finalScaleY = brain.baseScaleY * depthScale;
           
-          // Flip fish based on movement direction (texture faces right, so flip logic)
+          // Calculate movement direction (texture faces right, so flip logic)
           const dx = f.position.x - prevX;
           const dy = f.position.y - prevY;
           const dz = f.position.z - (brain.prevZ || f.position.z);
+          
+          // Determine facing direction based on horizontal movement
+          if (Math.abs(dx) > 0.001) {
+            brain.facingDir = dx > 0 ? 1 : -1;
+          }
+          
+          // Calculate pitch (tilt up/down) based on vertical movement
+          // For billboard fish, we need to rotate around Z axis
+          const verticalSpeed = dy;
+          const horizontalSpeed = Math.sqrt(dx * dx + dz * dz);
+          
+          brain.smoothPitch = brain.smoothPitch || 0;
+          
+          // Calculate angle: positive dy (up) should tilt head up, negative dy (down) should tilt head down
+          // The sign depends on which way the fish is facing
+          let targetPitch = 0;
+          if (horizontalSpeed > 0.001 || Math.abs(verticalSpeed) > 0.001) {
+            // atan2 gives us the angle of movement
+            targetPitch = Math.atan2(verticalSpeed, horizontalSpeed) * 0.6;
+            // If fish is facing left (flipped), we need to flip the rotation
+            if (brain.facingDir < 0) {
+              targetPitch = -targetPitch;
+            }
+          }
+          
+          brain.smoothPitch = brain.smoothPitch * 0.85 + targetPitch * 0.15;
+          
+          // Apply rotation: Z axis for billboard tilt up/down
+          f.rotation.set(0, 0, brain.smoothPitch);
           
           // Calculate swimming speed (3D velocity magnitude)
           const swimSpeed = Math.sqrt(dx * dx + dy * dy + dz * dz) / dt;
@@ -853,11 +824,7 @@ import { GUI } from "lil-gui";
           brain.smoothTurn = brain.smoothTurn * CONFIG.animation.smoothingTurn + dirChange * (1.0 - CONFIG.animation.smoothingTurn);
           brain.prevDir = currentDir;
           
-          if (Math.abs(dx) > 0.001) {
-            // Moving horizontally - face direction of movement
-            brain.facingDir = dx > 0 ? 1 : -1; // positive X = right = normal, negative X = left = flip
-          }
-          
+          // Apply scale with facing direction
           f.scale.set(
             finalScaleX * brain.facingDir,
             finalScaleY,
@@ -876,30 +843,12 @@ import { GUI } from "lil-gui";
           // }
         });
 
-        // bubbles rise + respawn
-        const pa = bubbles.geometry.attributes.position.array;
-        const va = bubbles.geometry.attributes.aVel.array;
-        for (let i = 0; i < BUBBLE_COUNT; i++) {
-          pa[i * 3 + 1] += va[i] * dt; // rise
-          pa[i * 3 + 0] += Math.sin(t * 0.8 + i) * 0.001; // tiny drift
-          pa[i * 3 + 2] += Math.cos(t * 0.7 + i) * 0.001;
-
-          if (pa[i * 3 + 1] > 3.0) {
-            // respawn near “gravel”
-            pa[i * 3 + 0] = (Math.random() - 0.5) * 8;
-            pa[i * 3 + 1] = -2.5 + Math.random() * 0.5;
-            pa[i * 3 + 2] = (Math.random() - 0.5) * 8;
-            va[i] = 0.4 + Math.random() * 0.6;
-          }
-        }
-        bubbles.geometry.attributes.position.needsUpdate = true;
-
+        // Render the scene
         renderer.render(scene, camera);
+
         requestAnimationFrame(tick);
       }
       tick();
-
-      // ---------- resize ----------
       addEventListener("resize", () => {
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
