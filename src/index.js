@@ -91,34 +91,30 @@ import * as THREE from "three";
     uniform float uParts[54]; // 6 parts × 9 values each
     varying vec2 vUv;
     
-    // Calculate smooth influence of a part based on UV distance from part region
-    float getPartInfluence(vec2 uv, float minRow, float maxRow, float minCol, float maxCol) {
-      // Convert row/col (1-3) to UV space (0-1)
-      // Row: 1=top(0.66-1.0), 2=center(0.33-0.66), 3=bottom(0.0-0.33)
-      // Col: 1=head(0.0-0.33), 2=body(0.33-0.66), 3=tail(0.66-1.0)
-      
-      float rowMin = (4.0 - maxRow) / 3.0;
-      float rowMax = (4.0 - minRow) / 3.0;
-      float colMin = (minCol - 1.0) / 3.0;
-      float colMax = maxCol / 3.0;
-      
-      // Calculate how much this UV is inside the part region (with smooth falloff)
-      float xInfluence = smoothstep(colMin - 0.15, colMin, uv.x) * 
-                         (1.0 - smoothstep(colMax, colMax + 0.15, uv.x));
-      float yInfluence = smoothstep(rowMin - 0.15, rowMin, uv.y) * 
-                         (1.0 - smoothstep(rowMax, rowMax + 0.15, uv.y));
-      
-      return xInfluence * yInfluence;
-    }
-    
     void main() {
       vUv = uv;
       
-      // Accumulate contributions from all parts with smooth blending
-      float totalSway = 0.0;
-      float totalUnd = 0.0;
-      float totalRoll = 0.0;
-      float totalWeight = 0.0;
+      // PHYSICS-BASED APPROACH:
+      // 1. Distance from spine (center) - spine is rigid, edges are flexible
+      float distFromSpine = abs(vUv.y - 0.5) * 2.0;  // 0 = spine, 1 = edge
+      
+      // 2. Position along body - FLIPPED: uv.x=0 is tail, uv.x=1 is head (texture faces right)
+      float bodyPosition = 1.0 - vUv.x;  // 0 = head, 1 = tail
+      
+      // 3. Base flexibility from physics
+      // Head region (0-0.25) is rigid, gradually increases toward tail
+      float headRigidity = 1.0 - smoothstep(0.0, 0.25, bodyPosition);
+      float tailFlexibility = smoothstep(0.25, 1.0, bodyPosition);
+      
+      // Base flexibility: spine stays rigid, edges flex based on position
+      float baseFlexibility = distFromSpine * tailFlexibility * (1.0 - headRigidity * 0.95);
+      
+      // 4. Now find which anatomical part we're in and get its properties
+      float finalAmplitude = 0.0;
+      float finalFrequency = 6.0;
+      float finalSpeed = 0.7;
+      float finalPhase = 0.0;
+      float partModifier = 0.0;
       
       for (int i = 0; i < 6; i++) {
         if (i >= uPartCount) break;
@@ -134,36 +130,53 @@ import * as THREE from "three";
         float speed = uParts[baseIdx + 7];
         float phaseOffset = uParts[baseIdx + 8];
         
-        float influence = getPartInfluence(vUv, minRow, maxRow, minCol, maxCol);
+        // Convert row/col to UV space
+        float rowMin = (4.0 - maxRow) / 3.0;
+        float rowMax = (4.0 - minRow) / 3.0;
+        float colMin = (minCol - 1.0) / 3.0;
+        float colMax = maxCol / 3.0;
         
-        if (influence > 0.01) {
-          float weight = flexibility * influence;
-          float phase = uTime * speed + vUv.x * frequency + phaseOffset;
-          float sway = sin(phase) * amplitude * weight;
-          float und = cos(phase * 0.6) * amplitude * 0.1 * weight;
-          float roll = sin(phase * 0.7) * amplitude * 0.5 * weight;
+        // Check if we're in this part's region (with small margin)
+        if (vUv.x >= colMin - 0.05 && vUv.x <= colMax + 0.05 &&
+            vUv.y >= rowMin - 0.05 && vUv.y <= rowMax + 0.05) {
           
-          totalSway += sway;
-          totalUnd += und;
-          totalRoll += roll;
-          totalWeight += weight;
+          // Calculate influence (smooth at edges)
+          float xInfluence = smoothstep(colMin - 0.05, colMin + 0.02, vUv.x) * 
+                             (1.0 - smoothstep(colMax - 0.02, colMax + 0.05, vUv.x));
+          float yInfluence = smoothstep(rowMin - 0.05, rowMin + 0.02, vUv.y) * 
+                             (1.0 - smoothstep(rowMax - 0.02, rowMax + 0.05, vUv.y));
+          
+          float influence = xInfluence * yInfluence;
+          
+          if (influence > partModifier) {
+            // Use the strongest part's properties
+            partModifier = influence;
+            finalAmplitude = amplitude;
+            finalFrequency = frequency;
+            finalSpeed = speed;
+            finalPhase = phaseOffset;
+          }
         }
       }
       
-      // Normalize by total weight for smooth blending
-      float finalSway = totalWeight > 0.0 ? totalSway / totalWeight : 0.0;
-      float finalUnd = totalWeight > 0.0 ? totalUnd / totalWeight : 0.0;
-      float finalRoll = totalWeight > 0.0 ? totalRoll / totalWeight : 0.0;
+      // 5. Combine physics-based flexibility with part-specific animation
+      float totalFlexibility = baseFlexibility * (partModifier > 0.0 ? 1.0 : 0.5);
+      
+      // 6. Apply animation
+      float phase = uTime * finalSpeed + vUv.x * finalFrequency + finalPhase;
+      float sway = sin(phase) * finalAmplitude * totalFlexibility;
+      float und = cos(phase * 0.6) * finalAmplitude * 0.1 * totalFlexibility;
+      float roll = sin(phase * 0.7) * finalAmplitude * 0.3 * totalFlexibility * distFromSpine;
       
       vec3 pos = position;
-      pos.y += finalSway;
-      pos.z += finalUnd;
+      pos.y += sway;
+      pos.z += und;
       
-      // Apply roll
+      // Apply roll (only to edges, not spine)
       mat3 rZ = mat3(
-        cos(finalRoll), -sin(finalRoll), 0.0,
-        sin(finalRoll),  cos(finalRoll), 0.0,
-        0.0,             0.0,            1.0
+        cos(roll), -sin(roll), 0.0,
+        sin(roll),  cos(roll), 0.0,
+        0.0,        0.0,       1.0
       );
       pos = rZ * pos;
 
@@ -340,8 +353,9 @@ import * as THREE from "three";
         const startX = startFromLeft ? -8 : 8;
         const startZ = (Math.random() - 0.5) * 5 - 0.5; // -3 to 2
         
-        // Size based on species (using scale)
-        const baseScale = species.size.width / 2.0; // Normalize to base geometry size
+        // Size based on species (using scale) - base geometry is 2.0 x 0.8
+        const baseScaleX = species.size.width / 2.0;   // Normalize width to base geometry
+        const baseScaleY = species.size.height / 0.8;  // Normalize height to base geometry
         
         m.userData = {
           species: speciesName,
@@ -355,7 +369,8 @@ import * as THREE from "three";
           spawned: false,
           startX: startX,
           facingDir: facingDir,
-          baseScale: baseScale,
+          baseScaleX: baseScaleX,
+          baseScaleY: baseScaleY,
           // Movement direction
           targetX: (Math.random() - 0.5) * 8,
           targetY: -0.5 + Math.random() * 2.5
@@ -366,8 +381,8 @@ import * as THREE from "three";
         // Set initial scale (will be updated in animation loop)
         const depthScale = 1.0 - (startZ + 3) * 0.08;
         m.scale.set(
-          baseScale * depthScale * facingDir,
-          baseScale * depthScale,
+          baseScaleX * depthScale * facingDir,
+          baseScaleY * depthScale,
           1
         );
         
@@ -471,7 +486,8 @@ import * as THREE from "three";
           
           // Update scale based on depth and direction
           const depthScale = 1.0 - (f.position.z + 3) * 0.08;
-          const finalScale = brain.baseScale * depthScale;
+          const finalScaleX = brain.baseScaleX * depthScale;
+          const finalScaleY = brain.baseScaleY * depthScale;
           
           // Flip fish based on movement direction (texture faces right, so flip logic)
           const dx = f.position.x - prevX;
@@ -483,8 +499,8 @@ import * as THREE from "three";
           }
           
           f.scale.set(
-            finalScale * brain.facingDir,
-            finalScale,
+            finalScaleX * brain.facingDir,
+            finalScaleY,
             1
           );
 
