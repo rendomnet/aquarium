@@ -27,6 +27,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
         
         // Visual settings
         scene: {
+          fogColor: 0x0b2233,           // Underwater fog color (affects fish at distance)
           fogDensity: 0.055,            // Underwater fog density
           ambientLight: 0.55,           // Ambient light intensity
           directionalLight: 0.7,        // Directional light intensity
@@ -40,7 +41,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
       document.body.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0x0b2233, CONFIG.scene.fogDensity);
+      scene.fog = new THREE.FogExp2(CONFIG.scene.fogColor, CONFIG.scene.fogDensity);
 
       const camera = new THREE.PerspectiveCamera(
         55,
@@ -78,6 +79,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
           uCausticsIntensity: { value: CONFIG.caustics.fishIntensity },
           uCausticsBase: { value: CONFIG.caustics.fishBaseLight },
+          uFogColor: { value: new THREE.Color(CONFIG.scene.fogColor) },
+          uFogDensity: { value: CONFIG.scene.fogDensity },
           uTime: { value: 0 },
           uSwimSpeed: { value: 0.0 },  // Fish's actual swimming speed
           uTurnAmount: { value: 0.0 },  // How much the fish is turning (for drag effect)
@@ -529,6 +532,10 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           targetDepth: height,
           depthChangeTime: 0,
           depthChangeDuration: 3 + Math.random() * 4, // Change depth every 3-7 seconds
+          // Z-axis (distance from camera) movement
+          targetZ: startZ,
+          zChangeTime: 0,
+          zChangeDuration: 4 + Math.random() * 5, // Change Z every 4-9 seconds
         };
         
         m.position.set(startX, height, startZ);
@@ -581,7 +588,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           const swimInDuration = 3.0;
           let swimInProgress = Math.min(timeSinceSpawn / swimInDuration, 1.0);
           
-          // Check if it's time to change depth target
+          // Check if it's time to change Y depth target
           if (t - brain.depthChangeTime > brain.depthChangeDuration) {
             brain.depthChangeTime = t;
             brain.depthChangeDuration = 3 + Math.random() * 4;
@@ -596,8 +603,17 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
             brain.targetDepth = -2.0 + normalizedDepth * 4.8;
           }
           
-          // Smoothly move toward target depth
+          // Check if it's time to change Z position (distance from camera)
+          if (t - brain.zChangeTime > brain.zChangeDuration) {
+            brain.zChangeTime = t;
+            brain.zChangeDuration = 4 + Math.random() * 5;
+            // Pick new Z target: -3 (far) to 3 (near)
+            brain.targetZ = -3 + Math.random() * 6;
+          }
+          
+          // Smoothly move toward target depth and Z position
           brain.baseY += (brain.targetDepth - brain.baseY) * 0.3 * dt;
+          brain.baseZ += (brain.targetZ - brain.baseZ) * 0.2 * dt;  // Slower Z movement
           
           // Swim in current direction (don't turn around on screen)
           const prevX = f.position.x;
@@ -606,8 +622,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           // Move in facing direction
           f.position.x += brain.facingDir * brain.wanderSpeed * 2.0 * dt;
           
-          // Add gentle vertical and depth variation
-          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 1.2;
+          // Add gentle vertical and depth variation (small oscillations)
+          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 0.4;  // Reduced from 1.2
           const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3;
           
           f.position.z = brain.baseZ + wanderZ;
@@ -623,9 +639,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
             f.position.x = -8;
           }
           
-          // Keep fish within tank depth (Z axis)
-          if (f.position.z > 3) { brain.baseZ = -2; }
-          if (f.position.z < -3) { brain.baseZ = 2; }
+          // Keep fish within tank depth bounds (Z axis)
+          f.position.z = Math.max(-3, Math.min(3, f.position.z));
           
           // Clamp vertical position to tank bounds
           f.position.y = Math.max(-2.0, Math.min(2.8, f.position.y));
