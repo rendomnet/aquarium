@@ -644,8 +644,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           if (t - brain.zChangeTime > brain.zChangeDuration) {
             brain.zChangeTime = t;
             brain.zChangeDuration = 4 + Math.random() * 5;
-            // Pick new Z target: -3 (far) to 3 (near)
-            brain.targetZ = -3 + Math.random() * 6;
+            // Pick new Z target: -1.5 (far) to 1.5 (near) - reduced range for subtlety
+            brain.targetZ = -1.5 + Math.random() * 3;
           }
           
           // Smoothly move toward target depth and Z position
@@ -660,7 +660,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           f.position.x += brain.facingDir * brain.wanderSpeed * 2.0 * dt;
           
           // Add gentle vertical and depth variation (small oscillations)
-          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 0.4;  // Reduced from 1.2
+          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 0.2;  // Minimal Z oscillation
           const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3;
           
           f.position.z = brain.baseZ + wanderZ;
