@@ -80,30 +80,90 @@ import * as THREE from "three";
         uniforms: {
           uTex: { value: null },
           uTime: { value: 0 },
-          uAmp: { value: 0.22 },
-          uFreq: { value: 8.0 },
-          uSpeed: { value: 0.85 },
-          uRoll: { value: 0.16 },
+          // Anatomical part system - up to 6 parts per fish
+          uPartCount: { value: 0 },
+          // Each part: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset]
+          uParts: { value: new Array(6).fill(0).map(() => [0,0,0,0,0,0,0,0,0]) },
         },
         vertexShader: /*glsl*/ `
-    uniform float uTime, uAmp, uFreq, uSpeed, uRoll;
+    uniform float uTime;
+    uniform int uPartCount;
+    uniform float uParts[54]; // 6 parts × 9 values each
     varying vec2 vUv;
+    
+    // Calculate smooth influence of a part based on UV distance from part region
+    float getPartInfluence(vec2 uv, float minRow, float maxRow, float minCol, float maxCol) {
+      // Convert row/col (1-3) to UV space (0-1)
+      // Row: 1=top(0.66-1.0), 2=center(0.33-0.66), 3=bottom(0.0-0.33)
+      // Col: 1=head(0.0-0.33), 2=body(0.33-0.66), 3=tail(0.66-1.0)
+      
+      float rowMin = (4.0 - maxRow) / 3.0;
+      float rowMax = (4.0 - minRow) / 3.0;
+      float colMin = (minCol - 1.0) / 3.0;
+      float colMax = maxCol / 3.0;
+      
+      // Calculate how much this UV is inside the part region (with smooth falloff)
+      float xInfluence = smoothstep(colMin - 0.15, colMin, uv.x) * 
+                         (1.0 - smoothstep(colMax, colMax + 0.15, uv.x));
+      float yInfluence = smoothstep(rowMin - 0.15, rowMin, uv.y) * 
+                         (1.0 - smoothstep(rowMax, rowMax + 0.15, uv.y));
+      
+      return xInfluence * yInfluence;
+    }
+    
     void main() {
       vUv = uv;
-      float w = smoothstep(0.18, 1.0, vUv.x);            // tail weighting
-      float phase = uTime * uSpeed + vUv.x * uFreq;
-      float sway  = sin(phase) * uAmp * w;               // lateral wag
-      float und   = cos(phase * 0.6) * 0.02 * (0.4 + w); // slight vertical
-
+      
+      // Accumulate contributions from all parts with smooth blending
+      float totalSway = 0.0;
+      float totalUnd = 0.0;
+      float totalRoll = 0.0;
+      float totalWeight = 0.0;
+      
+      for (int i = 0; i < 6; i++) {
+        if (i >= uPartCount) break;
+        
+        int baseIdx = i * 9;
+        float minRow = uParts[baseIdx + 0];
+        float maxRow = uParts[baseIdx + 1];
+        float minCol = uParts[baseIdx + 2];
+        float maxCol = uParts[baseIdx + 3];
+        float flexibility = uParts[baseIdx + 4];
+        float amplitude = uParts[baseIdx + 5];
+        float frequency = uParts[baseIdx + 6];
+        float speed = uParts[baseIdx + 7];
+        float phaseOffset = uParts[baseIdx + 8];
+        
+        float influence = getPartInfluence(vUv, minRow, maxRow, minCol, maxCol);
+        
+        if (influence > 0.01) {
+          float weight = flexibility * influence;
+          float phase = uTime * speed + vUv.x * frequency + phaseOffset;
+          float sway = sin(phase) * amplitude * weight;
+          float und = cos(phase * 0.6) * amplitude * 0.1 * weight;
+          float roll = sin(phase * 0.7) * amplitude * 0.5 * weight;
+          
+          totalSway += sway;
+          totalUnd += und;
+          totalRoll += roll;
+          totalWeight += weight;
+        }
+      }
+      
+      // Normalize by total weight for smooth blending
+      float finalSway = totalWeight > 0.0 ? totalSway / totalWeight : 0.0;
+      float finalUnd = totalWeight > 0.0 ? totalUnd / totalWeight : 0.0;
+      float finalRoll = totalWeight > 0.0 ? totalRoll / totalWeight : 0.0;
+      
       vec3 pos = position;
-      pos.y += sway;
-      pos.z += und;
-
-      float roll = sin(uTime * uSpeed * 0.7) * uRoll * (0.25 + w);
+      pos.y += finalSway;
+      pos.z += finalUnd;
+      
+      // Apply roll
       mat3 rZ = mat3(
-        cos(roll), -sin(roll), 0.0,
-        sin(roll),  cos(roll), 0.0,
-        0.0,        0.0,       1.0
+        cos(finalRoll), -sin(finalRoll), 0.0,
+        sin(finalRoll),  cos(finalRoll), 0.0,
+        0.0,             0.0,            1.0
       );
       pos = rZ * pos;
 
@@ -127,6 +187,11 @@ import * as THREE from "three";
         amp: document.getElementById("amp"),
       };
 
+      // Helper to define anatomical parts
+      function definePart(cells, flexibility, amplitude, frequency, speed, phaseOffset = 0) {
+        return { cells, flexibility, amplitude, frequency, speed, phaseOffset };
+      }
+
       // Fish species definitions
       const FISH_SPECIES = {
         angelfish: {
@@ -135,7 +200,14 @@ import * as THREE from "three";
           baseSpeed: 0.12,
           wanderRange: 2.5,
           preferredDepth: [0.3, 1.2],
-          schooling: false
+          schooling: false,
+          anatomy: {
+            headCore: definePart([[2,1]], 0.0, 0.0, 6.0, 0.7),
+            bodyCore: definePart([[2,2]], 0.01, 0.02, 6.0, 0.7),  // Much more rigid spine
+            dorsalFin: definePart([[1,1], [1,2], [1,3]], 0.7, 0.18, 6.0, 0.7, 0.0),
+            ventralFin: definePart([[3,1], [3,2], [3,3]], 0.7, 0.18, 6.0, 0.7, Math.PI),
+            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.25, 5.0, 0.8, 0.5)
+          }
         },
         discus: {
           texture: '/images/fish/discus.png',
@@ -143,7 +215,12 @@ import * as THREE from "three";
           baseSpeed: 0.15,
           wanderRange: 2.8,
           preferredDepth: [0.2, 1.0],
-          schooling: false
+          schooling: false,
+          anatomy: {
+            headCore: definePart([[2,1]], 0.0, 0.0, 5.0, 0.65),
+            bodyDisc: definePart([[1,1], [2,1], [3,1], [1,2], [2,2], [3,2]], 0.02, 0.08, 5.0, 0.65),
+            tailFin: definePart([[1,3], [2,3], [3,3]], 0.85, 0.15, 5.0, 0.65, 0.0)
+          }
         },
         gourami: {
           texture: '/images/fish/gourami.png',
@@ -151,7 +228,14 @@ import * as THREE from "three";
           baseSpeed: 0.18,
           wanderRange: 3.0,
           preferredDepth: [0.5, 1.5],
-          schooling: false
+          schooling: false,
+          anatomy: {
+            headCore: definePart([[2,1]], 0.0, 0.0, 7.0, 0.75),
+            bodyCore: definePart([[2,2]], 0.08, 0.10, 7.0, 0.75),
+            dorsalFin: definePart([[1,1], [1,2]], 0.6, 0.18, 7.0, 0.75, 0.0),
+            ventralFin: definePart([[3,1], [3,2]], 0.6, 0.18, 7.0, 0.75, Math.PI),
+            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.22, 6.5, 0.8, 0.3)
+          }
         },
         swordtail: {
           texture: '/images/fish/swordtail.png',
@@ -159,7 +243,14 @@ import * as THREE from "three";
           baseSpeed: 0.25,
           wanderRange: 4.0,
           preferredDepth: [0.0, 1.0],
-          schooling: true
+          schooling: true,
+          anatomy: {
+            headCore: definePart([[2,1]], 0.0, 0.0, 7.5, 0.90),
+            bodyCore: definePart([[2,2]], 0.10, 0.12, 7.5, 0.90),
+            dorsalFin: definePart([[1,1], [1,2]], 0.5, 0.16, 7.5, 0.90, 0.0),
+            ventralFin: definePart([[3,1], [3,2]], 0.5, 0.16, 7.5, 0.90, Math.PI),
+            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.24, 7.0, 0.95, 0.4)
+          }
         },
         platy: {
           texture: '/images/fish/platy.png',
@@ -167,7 +258,14 @@ import * as THREE from "three";
           baseSpeed: 0.22,
           wanderRange: 3.5,
           preferredDepth: [-0.2, 0.8],
-          schooling: true
+          schooling: true,
+          anatomy: {
+            headCore: definePart([[2,1]], 0.0, 0.0, 7.0, 0.80),
+            bodyCore: definePart([[2,2]], 0.10, 0.12, 7.0, 0.80),
+            dorsalFin: definePart([[1,1], [1,2]], 0.55, 0.16, 7.0, 0.80, 0.0),
+            ventralFin: definePart([[3,1], [3,2]], 0.55, 0.16, 7.0, 0.80, Math.PI),
+            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.20, 6.5, 0.85, 0.3)
+          }
         },
         guppy: {
           texture: '/images/fish/guppy.png',
@@ -175,19 +273,20 @@ import * as THREE from "three";
           baseSpeed: 0.30,
           wanderRange: 4.5,
           preferredDepth: [0.3, 1.3],
-          schooling: true
+          schooling: true,
+          anatomy: {
+            headCore: definePart([[2,1]], 0.0, 0.0, 8.0, 1.0),
+            bodyCore: definePart([[2,2]], 0.15, 0.14, 8.0, 1.0),
+            dorsalFin: definePart([[1,1], [1,2]], 0.6, 0.18, 8.0, 1.0, 0.0),
+            ventralFin: definePart([[3,1], [3,2]], 0.6, 0.18, 8.0, 1.0, Math.PI),
+            fancyTail: definePart([[1,3], [2,3], [3,3]], 1.0, 0.28, 7.5, 1.0, 0.5)
+          }
         }
       };
 
       // Tank population
       const POPULATION = [
-        'angelfish', 'angelfish',
-        'discus', 'discus',
-        'gourami', 'gourami', 'gourami',
-        'swordtail', 'swordtail', 'swordtail',
-        'platy', 'platy', 'platy', 'platy',
-        'guppy', 'guppy', 'guppy', 'guppy', 'guppy'
-      ];
+        'angelfish', 'discus', 'gourami',  'swordtail',  'platy', 'guppy'  ];
 
       // Load all fish textures
       const fishTextures = {};
@@ -201,6 +300,33 @@ import * as THREE from "three";
         // Use shared geometry, scale the mesh instead
         const mat = fishMat.clone();
         mat.uniforms.uTex.value = fishTextures[speciesName];
+        
+        // Convert anatomy to shader format
+        const parts = Object.values(species.anatomy);
+        const partsArray = [];
+        
+        parts.forEach(part => {
+          // Find min/max row and col from cells
+          const rows = part.cells.map(c => c[0]);
+          const cols = part.cells.map(c => c[1]);
+          const minRow = Math.min(...rows);
+          const maxRow = Math.max(...rows);
+          const minCol = Math.min(...cols);
+          const maxCol = Math.max(...cols);
+          
+          // Pack into array: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset]
+          partsArray.push(
+            minRow, maxRow, minCol, maxCol,
+            part.flexibility, part.amplitude, part.frequency, part.speed, part.phaseOffset
+          );
+        });
+        
+        // Pad to 54 elements (6 parts × 9 values)
+        while (partsArray.length < 54) partsArray.push(0);
+        
+        mat.uniforms.uPartCount.value = parts.length;
+        mat.uniforms.uParts.value = partsArray;
+        
         const m = new THREE.Mesh(fishGeo, mat);
         
         // Random starting direction
@@ -219,9 +345,9 @@ import * as THREE from "three";
         
         m.userData = {
           species: speciesName,
-          baseX: startFromLeft ? -3 : 3, // Target area
+          baseX: (Math.random() - 0.5) * 8, // Random area, not centered
           baseZ: startZ,
-          height: height,
+          baseY: height,
           wanderSpeed: species.baseSpeed * (0.8 + Math.random() * 0.4),
           wanderRange: species.wanderRange,
           phase: Math.random() * Math.PI * 2,
@@ -229,7 +355,10 @@ import * as THREE from "three";
           spawned: false,
           startX: startX,
           facingDir: facingDir,
-          baseScale: baseScale
+          baseScale: baseScale,
+          // Movement direction
+          targetX: (Math.random() - 0.5) * 8,
+          targetY: -0.5 + Math.random() * 2.5
         };
         
         m.position.set(startX, height, startZ);
@@ -306,33 +435,36 @@ import * as THREE from "three";
           const swimInDuration = 3.0;
           let swimInProgress = Math.min(timeSinceSpawn / swimInDuration, 1.0);
           
-          // Lazy side-to-side swimming
+          // Natural swimming with directional movement
           const wanderX = Math.sin(t * brain.wanderSpeed + brain.phase) * brain.wanderRange;
           const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 1.2;
+          const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.4;
           
           const prevX = f.position.x;
+          const prevY = f.position.y;
           
-          // Blend from spawn position to wander position
-          const targetX = brain.baseX + wanderX;
-          f.position.x = brain.startX + (targetX - brain.startX) * swimInProgress;
+          // Swim naturally, not forced to center
+          f.position.x = brain.baseX + wanderX;
           f.position.z = brain.baseZ + wanderZ;
-          f.position.y = brain.height + Math.sin(t * 0.4 + brain.phase) * 0.15;
+          f.position.y = brain.baseY + wanderY;
 
-          // Wrap around if fish goes too far (only after fully spawned)
-          if (swimInProgress >= 1.0) {
-            if (f.position.x > 6) { 
-              f.position.x = -6; 
-              brain.baseX = -4;
-              brain.startX = -6;
-            }
-            if (f.position.x < -6) { 
-              f.position.x = 6; 
-              brain.baseX = 4;
-              brain.startX = 6;
-            }
-            if (f.position.z > 3) { brain.baseZ = -2; }
-            if (f.position.z < -3) { brain.baseZ = 2; }
+          // Wrap around if fish goes too far
+          if (f.position.x > 7) { 
+            f.position.x = -7; 
+            brain.baseX = -5 + Math.random() * 2;
           }
+          if (f.position.x < -7) { 
+            f.position.x = 7; 
+            brain.baseX = 3 + Math.random() * 2;
+          }
+          if (f.position.y > 2.5) {
+            brain.baseY = -0.3 + Math.random() * 1.5;
+          }
+          if (f.position.y < -1.0) {
+            brain.baseY = 0.5 + Math.random() * 1.5;
+          }
+          if (f.position.z > 3) { brain.baseZ = -2; }
+          if (f.position.z < -3) { brain.baseZ = 2; }
 
           // Keep fish facing camera (no rotation) - billboard effect
           f.rotation.set(0, 0, 0);
@@ -341,11 +473,13 @@ import * as THREE from "three";
           const depthScale = 1.0 - (f.position.z + 3) * 0.08;
           const finalScale = brain.baseScale * depthScale;
           
-          // Flip fish horizontally based on movement direction
-          if (f.position.x < prevX) {
-            brain.facingDir = 1; // swimming left
-          } else if (f.position.x > prevX) {
-            brain.facingDir = -1; // swimming right
+          // Flip fish based on movement direction (texture faces right, so flip logic)
+          const dx = f.position.x - prevX;
+          const dy = f.position.y - prevY;
+          
+          if (Math.abs(dx) > 0.001) {
+            // Moving horizontally - face direction of movement
+            brain.facingDir = dx > 0 ? 1 : -1; // positive X = right = normal, negative X = left = flip
           }
           
           f.scale.set(
@@ -354,12 +488,14 @@ import * as THREE from "three";
             1
           );
 
-          // live-tune shader
+          // Update shader time
           f.material.uniforms.uTime.value = t;
-          if (UI.speed && UI.amp) {
-            f.material.uniforms.uSpeed.value = parseFloat(UI.speed.value);
-            f.material.uniforms.uAmp.value = parseFloat(UI.amp.value);
-          }
+          
+          // Optional: UI controls can override (for debugging)
+          // if (UI.speed && UI.amp) {
+          //   f.material.uniforms.uSpeed.value = parseFloat(UI.speed.value);
+          //   f.material.uniforms.uAmp.value = parseFloat(UI.amp.value);
+          // }
         });
 
         // bubbles rise + respawn
