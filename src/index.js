@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
       // ---------- renderer / scene / camera ----------
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -16,9 +15,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
         0.1,
         200
       );
-      camera.position.set(0, 1.3, 6.5);
-      const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
+      camera.position.set(0, 0.5, 10);
+      camera.lookAt(0, 0.5, 0);
 
       // ---------- lights ----------
       scene.add(new THREE.AmbientLight(0x79a8ff, 0.55));
@@ -49,12 +47,11 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
       // ---------- textures ----------
       const loader = new THREE.TextureLoader();
-      const fishTex = loader.load("fish.png");
-      const causticsTex = loader.load("caustics.jpg");
+      const causticsTex = loader.load("/images/caustics.jpg");
       causticsTex.wrapS = causticsTex.wrapT = THREE.RepeatWrapping;
       causticsTex.repeat.set(6, 6);
 
-      const bubbleTex = loader.load("bubble.png");
+      const bubbleTex = loader.load("/images/bubble.png");
       bubbleTex.wrapS = bubbleTex.wrapT = THREE.ClampToEdgeWrapping;
 
       // ---------- moving caustics projector (simple quad overhead) ----------
@@ -75,13 +72,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
       const FISH_SEG_X = 64,
         FISH_SEG_Y = 12;
       const fishGeo = new THREE.PlaneGeometry(2.0, 0.8, FISH_SEG_X, FISH_SEG_Y);
-      fishGeo.rotateY(Math.PI); // uv.x = 0 (nose) -> 1 (tail) when facing +Z
+      // Plane starts facing camera (+Z), no rotation needed for proper orientation
 
       const fishMat = new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,
         uniforms: {
-          uTex: { value: fishTex },
+          uTex: { value: null },
           uTime: { value: 0 },
           uAmp: { value: 0.22 },
           uFreq: { value: 8.0 },
@@ -130,32 +127,131 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
         amp: document.getElementById("amp"),
       };
 
-      function createFish() {
-        const m = new THREE.Mesh(fishGeo, fishMat.clone());
-        m.material.uniforms.uTex.value = fishTex;
-        m.scale.x = Math.random() < 0.5 ? -1 : 1;
+      // Fish species definitions
+      const FISH_SPECIES = {
+        angelfish: {
+          texture: '/images/fish/angelfish.png',
+          size: { width: 2.2, height: 2.2 },
+          baseSpeed: 0.12,
+          wanderRange: 2.5,
+          preferredDepth: [0.3, 1.2],
+          schooling: false
+        },
+        discus: {
+          texture: '/images/fish/discus.png',
+          size: { width: 1.8, height: 1.8 },
+          baseSpeed: 0.15,
+          wanderRange: 2.8,
+          preferredDepth: [0.2, 1.0],
+          schooling: false
+        },
+        gourami: {
+          texture: '/images/fish/gourami.png',
+          size: { width: 1.5, height: 0.9 },
+          baseSpeed: 0.18,
+          wanderRange: 3.0,
+          preferredDepth: [0.5, 1.5],
+          schooling: false
+        },
+        swordtail: {
+          texture: '/images/fish/swordtail.png',
+          size: { width: 1.6, height: 0.7 },
+          baseSpeed: 0.25,
+          wanderRange: 4.0,
+          preferredDepth: [0.0, 1.0],
+          schooling: true
+        },
+        platy: {
+          texture: '/images/fish/platy.png',
+          size: { width: 1.2, height: 0.6 },
+          baseSpeed: 0.22,
+          wanderRange: 3.5,
+          preferredDepth: [-0.2, 0.8],
+          schooling: true
+        },
+        guppy: {
+          texture: '/images/fish/guppy.png',
+          size: { width: 0.9, height: 0.5 },
+          baseSpeed: 0.30,
+          wanderRange: 4.5,
+          preferredDepth: [0.3, 1.3],
+          schooling: true
+        }
+      };
 
+      // Tank population
+      const POPULATION = [
+        'angelfish', 'angelfish',
+        'discus', 'discus',
+        'gourami', 'gourami', 'gourami',
+        'swordtail', 'swordtail', 'swordtail',
+        'platy', 'platy', 'platy', 'platy',
+        'guppy', 'guppy', 'guppy', 'guppy', 'guppy'
+      ];
+
+      // Load all fish textures
+      const fishTextures = {};
+      Object.keys(FISH_SPECIES).forEach(species => {
+        fishTextures[species] = loader.load(FISH_SPECIES[species].texture);
+      });
+
+      function createFish(speciesName, spawnDelay) {
+        const species = FISH_SPECIES[speciesName];
+        
+        // Use shared geometry, scale the mesh instead
+        const mat = fishMat.clone();
+        mat.uniforms.uTex.value = fishTextures[speciesName];
+        const m = new THREE.Mesh(fishGeo, mat);
+        
+        // Random starting direction
+        const startFromLeft = Math.random() < 0.5;
+        const facingDir = startFromLeft ? 1 : -1;
+
+        // Vary vertical position more - spread across full tank height
+        const height = -0.5 + Math.random() * 2.5; // -0.5 to 2.0
+        
+        // Spawn position - start off-screen
+        const startX = startFromLeft ? -8 : 8;
+        const startZ = (Math.random() - 0.5) * 5 - 0.5; // -3 to 2
+        
+        // Size based on species (using scale)
+        const baseScale = species.size.width / 2.0; // Normalize to base geometry size
+        
         m.userData = {
-          theta: Math.random() * Math.PI * 2,
-          radius: 3.8 + Math.random() * 3.2,
-          height: -0.4 + Math.random() * 1.0,
-          turn: 0.1 + Math.random() * 0.16,
+          species: speciesName,
+          baseX: startFromLeft ? -3 : 3, // Target area
+          baseZ: startZ,
+          height: height,
+          wanderSpeed: species.baseSpeed * (0.8 + Math.random() * 0.4),
+          wanderRange: species.wanderRange,
           phase: Math.random() * Math.PI * 2,
+          spawnTime: spawnDelay,
+          spawned: false,
+          startX: startX,
+          facingDir: facingDir,
+          baseScale: baseScale
         };
+        
+        m.position.set(startX, height, startZ);
+        
+        // Set initial scale (will be updated in animation loop)
+        const depthScale = 1.0 - (startZ + 3) * 0.08;
+        m.scale.set(
+          baseScale * depthScale * facingDir,
+          baseScale * depthScale,
+          1
+        );
+        
         return m;
       }
 
       const fishes = [];
-      for (let i = 0; i < 12; i++) {
-        const f = createFish();
-        f.position.set(
-          (Math.random() - 0.5) * 8,
-          -0.2 + Math.random() * 1.2,
-          (Math.random() - 0.5) * 6
-        );
+      POPULATION.forEach((speciesName, i) => {
+        const spawnDelay = i * 0.8; // Stagger spawns every 0.8 seconds
+        const f = createFish(speciesName, spawnDelay);
         scene.add(f);
         fishes.push(f);
-      }
+      });
 
       // ---------- bubble particles ----------
       const BUBBLE_COUNT = 120;
@@ -191,28 +287,79 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
         causticsTex.offset.x = (t * 0.03) % 1;
         causticsTex.offset.y = (t * 0.018) % 1;
 
-        // school swim + shader controls
+        // gentle aquarium swimming
         fishes.forEach((f, i) => {
           const brain = f.userData;
-          brain.theta += brain.turn * dt;
+          
+          // Handle spawn animation
+          if (!brain.spawned) {
+            if (t < brain.spawnTime) {
+              f.visible = false;
+              return;
+            }
+            brain.spawned = true;
+            f.visible = true;
+          }
+          
+          // Swim in from off-screen during first few seconds
+          const timeSinceSpawn = t - brain.spawnTime;
+          const swimInDuration = 3.0;
+          let swimInProgress = Math.min(timeSinceSpawn / swimInDuration, 1.0);
+          
+          // Lazy side-to-side swimming
+          const wanderX = Math.sin(t * brain.wanderSpeed + brain.phase) * brain.wanderRange;
+          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 1.2;
+          
+          const prevX = f.position.x;
+          
+          // Blend from spawn position to wander position
+          const targetX = brain.baseX + wanderX;
+          f.position.x = brain.startX + (targetX - brain.startX) * swimInProgress;
+          f.position.z = brain.baseZ + wanderZ;
+          f.position.y = brain.height + Math.sin(t * 0.4 + brain.phase) * 0.15;
 
-          const r = brain.radius + Math.sin(t * 0.5 + i) * 0.35;
-          f.position.x = Math.cos(brain.theta + i * 0.35) * r * 0.65;
-          f.position.z = Math.sin(brain.theta + i * 0.35) * r;
-          f.position.y = brain.height + Math.sin(t * 0.9 + brain.phase) * 0.22;
+          // Wrap around if fish goes too far (only after fully spawned)
+          if (swimInProgress >= 1.0) {
+            if (f.position.x > 6) { 
+              f.position.x = -6; 
+              brain.baseX = -4;
+              brain.startX = -6;
+            }
+            if (f.position.x < -6) { 
+              f.position.x = 6; 
+              brain.baseX = 4;
+              brain.startX = 6;
+            }
+            if (f.position.z > 3) { brain.baseZ = -2; }
+            if (f.position.z < -3) { brain.baseZ = 2; }
+          }
 
-          const ahead = new THREE.Vector3(
-            Math.cos(brain.theta + 0.05 + i * 0.35) * r * 0.65,
-            f.position.y,
-            Math.sin(brain.theta + 0.05 + i * 0.35) * r
+          // Keep fish facing camera (no rotation) - billboard effect
+          f.rotation.set(0, 0, 0);
+          
+          // Update scale based on depth and direction
+          const depthScale = 1.0 - (f.position.z + 3) * 0.08;
+          const finalScale = brain.baseScale * depthScale;
+          
+          // Flip fish horizontally based on movement direction
+          if (f.position.x < prevX) {
+            brain.facingDir = 1; // swimming left
+          } else if (f.position.x > prevX) {
+            brain.facingDir = -1; // swimming right
+          }
+          
+          f.scale.set(
+            finalScale * brain.facingDir,
+            finalScale,
+            1
           );
-          f.lookAt(ahead);
-          f.rotation.z = 0; // keep upright; roll is in shader
 
           // live-tune shader
           f.material.uniforms.uTime.value = t;
-          f.material.uniforms.uSpeed.value = parseFloat(UI.speed.value);
-          f.material.uniforms.uAmp.value = parseFloat(UI.amp.value);
+          if (UI.speed && UI.amp) {
+            f.material.uniforms.uSpeed.value = parseFloat(UI.speed.value);
+            f.material.uniforms.uAmp.value = parseFloat(UI.amp.value);
+          }
         });
 
         // bubbles rise + respawn
@@ -233,7 +380,6 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
         }
         bubbles.geometry.attributes.position.needsUpdate = true;
 
-        controls.update();
         renderer.render(scene, camera);
         requestAnimationFrame(tick);
       }
