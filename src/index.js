@@ -3,774 +3,715 @@ import { GUI } from "lil-gui";
 import fishVertexShader from "./shaders/fish.vert.glsl?raw";
 import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
 
-      // ========== AQUARIUM CONFIGURATION ==========
-      // Adjust these values to customize the aquarium appearance and behavior
-      const CONFIG = {
-        // Caustics settings (light ripples from water surface on fish)
-        caustics: {
-          fishIntensity: 0.25,          // Caustics brightness on fish (0.0 = none, 0.5 = strong)
-          fishBaseLight: 0.85,          // Base lighting on fish (0.8 = darker, 1.0 = no darkening)
-          scale: 0.15,                  // Caustics pattern scale on fish (smaller = tighter pattern)
-          driftSpeed: 0.7,              // Caustics animation speed (1.0 = normal, 0.5 = slower)
-        },
-        
-        // Fish animation settings
-        animation: {
-          tailDragStrength: 0.3,        // How much tail lags when turning (0.0-1.0)
-          speedResponseMin: 0.6,        // Minimum animation speed when stationary
-          speedResponseMax: 1.8,        // Maximum animation speed when swimming fast
-          amplitudeMin: 0.7,            // Minimum tail amplitude
-          amplitudeMax: 1.6,            // Maximum tail amplitude
-          smoothingSpeed: 0.85,         // Speed smoothing (0.0-1.0, higher = smoother)
-          smoothingTurn: 0.7,           // Turn smoothing (0.0-1.0, higher = smoother)
-        },
-        
-        // Visual settings
-        scene: {
-          fogColor: 0x0b2233,           // Underwater fog color (affects fish at distance)
-          fogDensity: 0.055,            // Underwater fog density
-          ambientLight: 0.55,           // Ambient light intensity
-          directionalLight: 0.7,        // Directional light intensity
-        }
-      };
+// ========== AQUARIUM CONFIGURATION ==========
+// Adjust these values to customize the aquarium appearance and behavior
+const CONFIG = {
+  // Caustics settings (light ripples from water surface on fish)
+  caustics: {
+    fishIntensity: 0.25,          // Caustics brightness on fish (0.0 = none, 0.5 = strong)
+    fishBaseLight: 0.85,          // Base lighting on fish (0.8 = darker, 1.0 = no darkening)
+    scale: 0.15,                  // Caustics pattern scale on fish (smaller = tighter pattern)
+    driftSpeed: 0.7,              // Caustics animation speed (1.0 = normal, 0.5 = slower)
+  },
+  
+  // Fish animation settings
+  animation: {
+    tailDragStrength: 0.3,        // How much tail lags when turning (0.0-1.0)
+    speedResponseMin: 0.6,        // Minimum animation speed when stationary
+    speedResponseMax: 1.8,        // Maximum animation speed when swimming fast
+    amplitudeMin: 0.7,            // Minimum tail amplitude
+    amplitudeMax: 1.6,            // Maximum tail amplitude
+    smoothingSpeed: 0.85,         // Speed smoothing (0.0-1.0, higher = smoother)
+    smoothingTurn: 0.7,           // Turn smoothing (0.0-1.0, higher = smoother)
+  },
+  
+  // Visual settings
+  scene: {
+    fogColor: 0x0b2233,           // Underwater fog color (affects fish at distance)
+    fogDensity: 0.055,            // Underwater fog density
+    ambientLight: 0.55,           // Ambient light intensity
+    directionalLight: 0.7,        // Directional light intensity
+  },
+  
+  // Fish movement bounds
+  movement: {
+    depthRange: [-1, 1],          // Z-axis range [min, max] for fish depth (distance from camera)
+  }
+};
 
-      // ---------- renderer / scene / camera ----------
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-      renderer.setSize(innerWidth, innerHeight);
-      document.body.appendChild(renderer.domElement);
+// ---------- renderer / scene / camera ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
 
-      const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(CONFIG.scene.fogColor, CONFIG.scene.fogDensity);
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(CONFIG.scene.fogColor, CONFIG.scene.fogDensity);
 
-      const camera = new THREE.PerspectiveCamera(
-        55,
-        innerWidth / innerHeight,
-        0.1,
-        200
-      );
-      camera.position.set(0, 0.5, 10);
-      camera.lookAt(0, 0.5, 0);
+const camera = new THREE.PerspectiveCamera(
+  55,
+  innerWidth / innerHeight,
+  0.1,
+  200
+);
+camera.position.set(0, 0.5, 10);
+camera.lookAt(0, 0.5, 0);
 
-      // ---------- lights ----------
-      scene.add(new THREE.AmbientLight(0x79a8ff, CONFIG.scene.ambientLight));
-      const key = new THREE.DirectionalLight(0x9ad1ff, CONFIG.scene.directionalLight);
-      key.position.set(6, 12, 8);
-      scene.add(key);
+// ---------- lights ----------
+scene.add(new THREE.AmbientLight(0x79a8ff, CONFIG.scene.ambientLight));
+const key = new THREE.DirectionalLight(0x9ad1ff, CONFIG.scene.directionalLight);
+key.position.set(6, 12, 8);
+scene.add(key);
 
-      // ---------- textures ----------
-      const loader = new THREE.TextureLoader();
-      const causticsTex = loader.load("/images/caustics.jpg");
-      causticsTex.wrapS = causticsTex.wrapT = THREE.RepeatWrapping;
-      causticsTex.repeat.set(6, 6);
+// ---------- textures ----------
+const loader = new THREE.TextureLoader();
+const causticsTex = loader.load("/images/caustics.jpg");
+causticsTex.wrapS = causticsTex.wrapT = THREE.RepeatWrapping;
+causticsTex.repeat.set(6, 6);
 
-      // ---------- fish shader (plane + sine tail) ----------
-      const FISH_SEG_X = 64,
-        FISH_SEG_Y = 12;
-      const fishGeo = new THREE.PlaneGeometry(2.0, 0.8, FISH_SEG_X, FISH_SEG_Y);
-      // Plane starts facing camera (+Z), no rotation needed for proper orientation
+// ---------- fish shader (plane + sine tail) ----------
+const FISH_SEG_X = 64,
+  FISH_SEG_Y = 12;
+const fishGeo = new THREE.PlaneGeometry(2.0, 0.8, FISH_SEG_X, FISH_SEG_Y);
+// Plane starts facing camera (+Z), no rotation needed for proper orientation
 
-      const fishMat = new THREE.ShaderMaterial({
-        depthWrite: false,
-        uniforms: {
-          uTex: { value: null },
-          uCaustics: { value: causticsTex },  // Caustics texture
-          uCausticsScale: { value: CONFIG.caustics.scale },
-          uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
-          uCausticsIntensity: { value: CONFIG.caustics.fishIntensity },
-          uCausticsBase: { value: CONFIG.caustics.fishBaseLight },
-          uFogColor: { value: new THREE.Color(CONFIG.scene.fogColor) },
-          uFogDensity: { value: CONFIG.scene.fogDensity },
-          uTime: { value: 0 },
-          uSwimSpeed: { value: 0.0 },  // Fish's actual swimming speed
-          uTurnAmount: { value: 0.0 },  // How much the fish is turning (for drag effect)
-          uDragStrength: { value: CONFIG.animation.tailDragStrength },
-          uSpeedMin: { value: CONFIG.animation.speedResponseMin },
-          uSpeedMax: { value: CONFIG.animation.speedResponseMax },
-          uAmpMin: { value: CONFIG.animation.amplitudeMin },
-          uAmpMax: { value: CONFIG.animation.amplitudeMax },
-          // Anatomical part system - up to 6 parts per fish
-          uPartCount: { value: 0 },
-          // Each part: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse]
-          uParts: { value: new Array(6).fill(0).map(() => [0,0,0,0,0,0,0,0,0,0]) },
-          // Grid proportions: [row1, row2, row3, col1, col2, col3, col4]
-          uGridProps: { value: [0.33, 0.33, 0.34, 0.25, 0.25, 0.25, 0.25] },
-        },
-        vertexShader: fishVertexShader,
-        fragmentShader: fishFragmentShader,
-        transparent: true,
-        side: THREE.DoubleSide,
-      });
+const fishMat = new THREE.ShaderMaterial({
+  depthWrite: false,
+  uniforms: {
+    uTex: { value: null },
+    uCaustics: { value: causticsTex },  // Caustics texture
+    uCausticsScale: { value: CONFIG.caustics.scale },
+    uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
+    uCausticsIntensity: { value: CONFIG.caustics.fishIntensity },
+    uCausticsBase: { value: CONFIG.caustics.fishBaseLight },
+    uFogColor: { value: new THREE.Color(CONFIG.scene.fogColor) },
+    uFogDensity: { value: CONFIG.scene.fogDensity },
+    uTime: { value: 0 },
+    uSwimSpeed: { value: 0.0 },  // Fish's actual swimming speed
+    uTurnAmount: { value: 0.0 },  // How much the fish is turning (for drag effect)
+    uDragStrength: { value: CONFIG.animation.tailDragStrength },
+    uSpeedMin: { value: CONFIG.animation.speedResponseMin },
+    uSpeedMax: { value: CONFIG.animation.speedResponseMax },
+    uAmpMin: { value: CONFIG.animation.amplitudeMin },
+    uAmpMax: { value: CONFIG.animation.amplitudeMax },
+    // Anatomical part system - up to 6 parts per fish
+    uPartCount: { value: 0 },
+    // Each part: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse]
+    uParts: { value: new Array(6).fill(0).map(() => [0,0,0,0,0,0,0,0,0,0]) },
+    // Grid proportions: [row1, row2, row3, col1, col2, col3, col4]
+    uGridProps: { value: [0.33, 0.33, 0.34, 0.25, 0.25, 0.25, 0.25] },
+  },
+  vertexShader: fishVertexShader,
+  fragmentShader: fishFragmentShader,
+  transparent: true,
+  side: THREE.DoubleSide,
+});
 
-      // ---------- GUI Controls ----------
-      const gui = new GUI({ title: '🐠 Aquarium Controls' });
+
+// ---------- school of fish ----------
+const UI = {
+  speed: document.getElementById("speed"),
+  amp: document.getElementById("amp"),
+};
+
+// Helper to define anatomical parts with named parameters
+// movementResponse: 'propulsion' | 'passive' | 'stabilizer' | 'none'
+function definePart({ 
+  cells, 
+  flexibility, 
+  amplitude, 
+  frequency, 
+  speed, 
+  phaseOffset = 0,
+  movementResponse = 'none'  // How this part responds to swimming speed
+}) {
+  return { cells, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse };
+}
+
+// Fish species definitions
+const FISH_SPECIES = {
+  angelfish: {
+    texture: '/images/fish/angelfish.png',
+    size: { width: 2.2, height: 2.2 },
+    baseSpeed: 0.05,
+    wanderRange: 1.5,
+    preferredDepth: [0.4, 0.7],  // Mid-tank (0=bottom, 1=top)
+    schooling: false,
+    gridProportions: {
+      rows: [0.35, 0.30, 0.35],        // Tall fins top/bottom, narrow body center
+      cols: [0.30, 0.15, 0.40, 0.15]   // TailFin, TailBase, Body, Head
+    },
+    anatomy: {
+      tailFin: definePart({
+        cells: [[2,1], [3,1]],  // Col 1: Flowing tail fin
+        flexibility: 1.2,
+        amplitude: 0.28,
+        frequency: 5.0,
+        speed: 0.8,
+        phaseOffset: 0.5,
+        movementResponse: 'passive'     // Flows passively, minimal speed response
+      }),
+      tailBase: definePart({
+        cells: [[2,2]],                 // Col 2: Tail peduncle (muscular base)
+        flexibility: 0.4,
+        amplitude: 0.12,
+        frequency: 5.5,
+        speed: 0.75,
+        movementResponse: 'propulsion'  // Drives swimming, strong speed response
+      }),
+      bodyCore: definePart({
+        cells: [[2,3]],                 // Col 3: Body spine (rigid)
+        flexibility: 0.01,
+        amplitude: 0.02,
+        frequency: 6.0,
+        speed: 0.7,
+        movementResponse: 'none'        // Rigid, no movement response
+      }),
+      dorsalFin: definePart({
+        cells: [[1,2], [1,3], [1,4]],  // Top fin across tail base, body, head
+        flexibility: 0.7,
+        amplitude: 0.18,
+        frequency: 6.0,
+        speed: 0.7,
+        phaseOffset: 0.0,
+        // movementResponse: 'passive'  // Responds to turning only
+      }),
+      ventralFin: definePart({
+        cells: [[3,2], [3,3], [3,4]],  // Bottom fin across tail base, body, head
+        flexibility: 0.7,
+        amplitude: 0.18,
+        frequency: 6.0,
+        speed: 0.7,
+        phaseOffset: Math.PI,
+        movementResponse: 'passive'  // Responds to turning only
+      }),
+      headCore: definePart({
+        cells: [[2,4]],                 // Col 4: Head (completely rigid)
+        flexibility: 0.0,
+        amplitude: 0.0,
+        frequency: 6.0,
+        speed: 0.7
+      })
+    }
+  },
+  discus: {
+    texture: '/images/fish/discus.png',
+    size: { width: 1.8, height: 1.8 },
+    baseSpeed: 0.1,
+    wanderRange: 2.8,
+    preferredDepth: [0.2, 1.0],
+    schooling: false,
+    gridProportions: {
+      rows: [0.25, 0.50, 0.25],
+      cols: [0.15, 0.10, 0.55, 0.20]  // TailFin, TailBase, Body (large disc), Head
+    },
+    anatomy: {
+      tailFin: definePart({
+        cells: [[1,1], [2,1], [3,1]],
+        flexibility: 0.9,
+        amplitude: 0.16,
+        frequency: 5.0,
+        speed: 0.65,
+        movementResponse: 'passive'
+      }),
+      tailBase: definePart({
+        cells: [[2,2]],
+        flexibility: 0.3,
+        amplitude: 0.08,
+        frequency: 5.0,
+        speed: 0.65,
+        movementResponse: 'passive'
+      }),
+      dorsalFin: definePart({
+        cells: [[1,1], [1,2], [1,3], [1,4]],  // Top fin across all
+        flexibility: 0.6,
+        amplitude: 0.16,
+        frequency: 5.0,
+        speed: 0.65,
+        phaseOffset: 0.0,
+        movementResponse: 'propulsion'
+      }),
+      ventralFin: definePart({
+        cells: [[3,1], [3,2], [3,3], [3,4]],  // Bottom fin across all
+        flexibility: 0.6,
+        amplitude: 0.16,
+        frequency: 5.0,
+        speed: 0.65,
+        phaseOffset: Math.PI,
+        movementResponse: 'propulsion'
+      }),
+      bodyCore: definePart({
+        cells: [[2,3]],  // Large disc body
+        flexibility: 0.01,
+        amplitude: 0.04,
+        frequency: 5.0,
+        speed: 0.65
+      }),
+      headCore: definePart({
+        cells: [[2,4]],
+        flexibility: 0.0,
+        amplitude: 0.0,
+        frequency: 5.0,
+        speed: 0.65
+      })
+    }
+  },
+  gourami: {
+    texture: '/images/fish/gourami.png',
+    size: { width: 1.5, height: 0.9 },
+    baseSpeed: 0.45,
+    wanderRange: 3.0,
+    preferredDepth: [0.5, 0.8],  // Upper-mid tank
+    schooling: false,
+    gridProportions: {
+      rows: [0.25, 0.50, 0.25],
+      cols: [0.20, 0.15, 0.40, 0.25]  // TailFin, TailBase, Body, Head
+    },
+    anatomy: {
+      tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
+        flexibility: 1.0, amplitude: 0.26, frequency: 6.5, speed: 0.8, 
+        phaseOffset: 0.3,
+        movementResponse: 'propulsion'
+      }),
+      tailBase: definePart({ cells: [[2,2]], flexibility: 0.3, amplitude: 0.12, frequency: 6.5, speed: 0.75 }),
+      bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 7.0, speed: 0.75 }),
+      dorsalFin: definePart({ cells: [[1,1], [1,2], [1,3]], flexibility: 0.3, amplitude: 0.20, frequency: 7.0, speed: 0.75, phaseOffset: 0.0 }),
+      ventralFin: definePart({ cells: [[3,1], [3,2], [3,3]], flexibility: 0.8, amplitude: 0.40, frequency: 5.0, speed: 0.75, phaseOffset: Math.PI }),
+      headCore: definePart({ cells: [[2,4]], flexibility: 0.0, amplitude: 0.0, frequency: 7.0, speed: 0.75 })
+    }
+  },
+  swordtail: {
+    texture: '/images/fish/swordtail.png',
+    size: { width: 2, height: 0.6 },
+    baseSpeed: 0.25,
+    wanderRange: 4.0,
+    preferredDepth: [0.3, 0.6],  // Mid tank
+    schooling: true,
+    gridProportions: {
+      rows: [0.30, 0.40, 0.30],
+      cols: [0.25, 0.15, 0.35, 0.25]  // TailFin (sword!), TailBase, Body, Head
+    },
+    anatomy: {
+      tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
+        flexibility: 1.8, 
+        amplitude: 0.28, 
+        frequency: 4.0, 
+        speed: 0.95, 
+        phaseOffset: 0.4,
+        movementResponse: 'passive'
+      }),  // Lower frequency for smooth sword movement
+      tailBase: definePart({ cells: [[2,2]], 
+        flexibility: 0.5, 
+        amplitude: 0.15,
+        frequency: 5.0, 
+        speed: 0.90,
+        movementResponse: 'propulsion'
+      }),
+      bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 5.5, speed: 0.90 }),
+      dorsalFin: definePart({ cells: [[1,2], [1,3]], flexibility: 0.8, amplitude: 0.20, frequency: 5.5, speed: 0.90, phaseOffset: 0.0 }),
+      ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, amplitude: 0.20, frequency: 5.5, speed: 0.90, phaseOffset: Math.PI }),
+      headCore: definePart({ cells: [[2,4]], flexibility: 0.0, amplitude: 0.0, frequency: 5.5, speed: 0.90 })
+    }
+  },
+  platy: {
+    texture: '/images/fish/platy.png',
+    size: { width: 1, height: 0.5 },
+    baseSpeed: 0.22,
+    wanderRange: 3.5,
+    preferredDepth: [0.1, 0.2],  // Lower-mid tank
+    schooling: true,
+    gridProportions: {
+      rows: [0.20, 0.50, 0.30],
+      cols: [0.15, 0.10, 0.45, 0.20]  // TailFin, TailBase, Body, Head
+    },
+    anatomy: {
+      tailFin: definePart({ 
+        cells: [[1,1], [2,1], [3,1]], 
+        flexibility: 1.1, 
+        amplitude: 0.24, 
+        frequency: 6.5, 
+        speed: 0.85, 
+        phaseOffset: 0.3, 
+        movementResponse: 'propulsion' 
+      }),
+      tailBase: definePart({ 
+        cells: [[2,2]], flexibility: 0.4, amplitude: 0.12, 
+        frequency: 6.5, speed: 0.80 }),
+      headCore: definePart({ 
+        cells: [[2,4]], 
+        flexibility: 0.0, 
+        amplitude: 0.0, frequency: 7.0, 
+        speed: 0.80 
+      }),
+      bodyCore: definePart({ 
+        cells: [[2,3]], 
+        flexibility: 0.2, 
+        amplitude: 0.08, frequency: 7.0, 
+        speed: 0.80 
+      }),
+      dorsalFin: definePart({ 
+        cells: [[1,2], [1,3]], 
+        flexibility: 0.8, 
+        amplitude: 0.18, 
+        frequency: 7.0, 
+        speed: 0.80, 
+        movementResponse: 'passive',
+        phaseOffset: 0.0
+      }),
+      ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, 
+        amplitude: 0.18, 
+        frequency: 7.0, 
+        speed: 0.80, 
+        phaseOffset: Math.PI,
+        movementResponse: 'passive'
+      }),
       
-      // Caustics folder
-      const causticsFolder = gui.addFolder('Caustics (Light Ripples)');
-      causticsFolder.add(CONFIG.caustics, 'fishIntensity', 0, 0.8, 0.01).name('Fish Intensity').onChange(v => {
-        fishMat.uniforms.uCausticsIntensity.value = v;
-      });
-      causticsFolder.add(CONFIG.caustics, 'fishBaseLight', 0.5, 1.0, 0.01).name('Fish Base Light').onChange(v => {
-        fishMat.uniforms.uCausticsBase.value = v;
-      });
-      causticsFolder.add(CONFIG.caustics, 'scale', 0.05, 0.5, 0.01).name('Pattern Scale').onChange(v => {
-        fishMat.uniforms.uCausticsScale.value = v;
-      });
-      causticsFolder.add(CONFIG.caustics, 'driftSpeed', 0, 2, 0.1).name('Animation Speed').onChange(v => {
-        fishMat.uniforms.uCausticsDrift.value = v;
-      });
-      
-      // Animation folder
-      const animFolder = gui.addFolder('Fish Animation');
-      animFolder.add(CONFIG.animation, 'tailDragStrength', 0, 1, 0.05).name('Tail Drag').onChange(v => {
-        fishMat.uniforms.uDragStrength.value = v;
-      });
-      animFolder.add(CONFIG.animation, 'speedResponseMin', 0.1, 1.0, 0.05).name('Min Speed Response').onChange(v => {
-        fishMat.uniforms.uSpeedMin.value = v;
-      });
-      animFolder.add(CONFIG.animation, 'speedResponseMax', 1.0, 3.0, 0.1).name('Max Speed Response').onChange(v => {
-        fishMat.uniforms.uSpeedMax.value = v;
-      });
-      animFolder.add(CONFIG.animation, 'amplitudeMin', 0.3, 1.0, 0.05).name('Min Amplitude').onChange(v => {
-        fishMat.uniforms.uAmpMin.value = v;
-      });
-      animFolder.add(CONFIG.animation, 'amplitudeMax', 1.0, 2.5, 0.1).name('Max Amplitude').onChange(v => {
-        fishMat.uniforms.uAmpMax.value = v;
-      });
-      animFolder.add(CONFIG.animation, 'smoothingSpeed', 0.5, 0.95, 0.01).name('Speed Smoothing');
-      animFolder.add(CONFIG.animation, 'smoothingTurn', 0.5, 0.95, 0.01).name('Turn Smoothing');
-      
-      // Scene folder
-      const sceneFolder = gui.addFolder('Scene');
-      sceneFolder.add(CONFIG.scene, 'fogDensity', 0, 0.2, 0.005).name('Fog Density').onChange(v => {
-        scene.fog.density = v;
-      });
-      sceneFolder.add(CONFIG.scene, 'ambientLight', 0, 1, 0.05).name('Ambient Light').onChange(v => {
-        scene.children.find(c => c.isAmbientLight).intensity = v;
-      });
-      sceneFolder.add(CONFIG.scene, 'directionalLight', 0, 2, 0.1).name('Directional Light').onChange(v => {
-        key.intensity = v;
-      });
-      
-      // Open caustics folder by default
-      causticsFolder.open();
-      
-      // ---------- school of fish ----------
-      const UI = {
-        speed: document.getElementById("speed"),
-        amp: document.getElementById("amp"),
-      };
+    }
+  },
+  guppy: {
+    texture: '/images/fish/guppy.png',
+    size: { width: 1, height: 0.4 },
+    baseSpeed: 0.4,
+    wanderRange: 4.5,
+    preferredDepth: [0.6, 0.9],  // Upper tank (surface swimmers)
+    schooling: true,
+    gridProportions: {
+      rows: [0.20, 0.50, 0.30],
+      cols: [0.30, 0.10, 0.40, 0.15]  // FancyTail, TailBase, Body, Head
+    },
+    anatomy: {
+      fancyTail: definePart({
+        cells: [[1,1], [2,1], [3,1]],  // Big fancy tail
+        flexibility: 1.2,
+        amplitude: 0.15,
+        frequency: 5.5,
+        speed: 1.0,
+        phaseOffset: 0.5,
+        movementResponse: 'passive'
+      }),
+      tailBase: definePart({
+        cells: [[2,2]],                 // Small tail base
+        flexibility: 0.3,
+        amplitude: 0.08,
+        frequency: 6.0,
+        speed: 1.0,
+        movementResponse: 'propulsion'
+      }),
+      bodyCore: definePart({
+        cells: [[2,3]],                 // Body center
+        flexibility: 0.08,
+        amplitude: 0.10,
+        frequency: 6.0,
+        speed: 1.0
+      }),
+      dorsalFin: definePart({
+        cells: [[1,3]],                 // Small dorsal on body
+        flexibility: 0.5,
+        amplitude: 0.18,
+        frequency: 6.0,
+        speed: 1.0,
+        phaseOffset: 0.0
+      }),
+      ventralFin: definePart({
+        cells: [[3,3]],                 // Small ventral on body
+        flexibility: 0.7,
+        amplitude: 0.18,
+        frequency: 6.0,
+        speed: 1.0,
+        phaseOffset: Math.PI
+      }),
+      headCore: definePart({
+        cells: [[2,4]],                 // Tiny head
+        flexibility: 0.0,
+        amplitude: 0.0,
+        frequency: 6.0,
+        speed: 1.0
+      })
+    }
+  }
+};
 
-      // Helper to define anatomical parts with named parameters
-      // movementResponse: 'propulsion' | 'passive' | 'stabilizer' | 'none'
-      function definePart({ 
-        cells, 
-        flexibility, 
-        amplitude, 
-        frequency, 
-        speed, 
-        phaseOffset = 0,
-        movementResponse = 'none'  // How this part responds to swimming speed
-      }) {
-        return { cells, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse };
+// Tank population
+const POPULATION = [
+  'angelfish', 'discus', 'gourami',  'swordtail',  'platy', 'guppy'  ];
+
+// Load all fish textures
+const fishTextures = {};
+Object.keys(FISH_SPECIES).forEach(species => {
+  fishTextures[species] = loader.load(FISH_SPECIES[species].texture);
+});
+
+function createFish(speciesName) {
+  const species = FISH_SPECIES[speciesName];
+  
+  // Use shared geometry, scale the mesh instead
+  const mat = fishMat.clone();
+  mat.uniforms.uTex.value = fishTextures[speciesName];
+  
+  // Convert anatomy to shader format
+  const parts = Object.values(species.anatomy);
+  const partsArray = [];
+  
+  parts.forEach(part => {
+    // Find min/max row and col from cells
+    const rows = part.cells.map(c => c[0]);
+    const cols = part.cells.map(c => c[1]);
+    const minRow = Math.min(...rows);
+    const maxRow = Math.max(...rows);
+    const minCol = Math.min(...cols);
+    const maxCol = Math.max(...cols);
+    
+    // Encode movementResponse: none=0, passive=1, propulsion=2, stabilizer=3
+    const responseMap = { 'none': 0, 'passive': 1, 'propulsion': 2, 'stabilizer': 3 };
+    const responseCode = responseMap[part.movementResponse] || 0;
+    
+    // Pack into array: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse]
+    partsArray.push(
+      minRow, maxRow, minCol, maxCol,
+      part.flexibility, part.amplitude, part.frequency, part.speed, part.phaseOffset,
+      responseCode
+    );
+  });
+  
+  // Pad to 60 elements (6 parts × 10 values)
+  while (partsArray.length < 60) partsArray.push(0);
+  
+  mat.uniforms.uPartCount.value = parts.length;
+  mat.uniforms.uParts.value = partsArray;
+  
+  // Set custom grid proportions for this species
+  const gridProps = species.gridProportions;
+  mat.uniforms.uGridProps.value = [
+    gridProps.rows[0], gridProps.rows[1], gridProps.rows[2],
+    gridProps.cols[0], gridProps.cols[1], gridProps.cols[2], gridProps.cols[3]
+  ];
+  
+  const m = new THREE.Mesh(fishGeo, mat);
+  
+  // Random starting direction
+  const facingDir = Math.random() < 0.5 ? 1 : -1;
+
+  // Random position across the tank (instant spawn)
+  const startX = (Math.random() - 0.5) * 12; // -6 to 6
+  const height = -0.5 + Math.random() * 2.5; // -0.5 to 2.0
+  const depthMin = CONFIG.movement.depthRange[0];
+  const depthMax = CONFIG.movement.depthRange[1];
+  const startZ = depthMin + Math.random() * (depthMax - depthMin);
+  
+  // Size based on species (using scale) - base geometry is 2.0 x 0.8
+  const baseScaleX = species.size.width / 2.0;   // Normalize width to base geometry
+  const baseScaleY = species.size.height / 0.8;  // Normalize height to base geometry
+  
+  m.userData = {
+    species: speciesName,
+    baseX: startX,
+    baseZ: startZ,
+    baseY: height,
+    wanderSpeed: species.baseSpeed * (0.8 + Math.random() * 0.4),
+    wanderRange: species.wanderRange,
+    phase: Math.random() * Math.PI * 2,
+    facingDir: facingDir,
+    baseScaleX: baseScaleX,
+    baseScaleY: baseScaleY,
+    // Vertical movement targets
+    preferredDepth: species.preferredDepth, // [min, max] where 0=bottom, 1=top
+    targetDepth: height,
+    depthChangeTime: 0,
+    depthChangeDuration: 3 + Math.random() * 4, // Change depth every 3-7 seconds
+    // Z-axis (distance from camera) movement
+    targetZ: startZ,
+    zChangeTime: 0,
+    zChangeDuration: 4 + Math.random() * 5, // Change Z every 4-9 seconds
+  };
+  
+  m.position.set(startX, height, startZ);
+  m.visible = true; // Visible immediately
+  
+  // Set initial scale (will be updated in animation loop)
+  const depthRange = depthMax - depthMin;
+  const depthScale = 0.85 + (startZ - depthMin) / depthRange * 0.15;  // 0.85 (far) to 1.0 (near)
+  m.scale.set(
+    baseScaleX * depthScale * facingDir,
+    baseScaleY * depthScale,
+    1
+  );
+  
+  return m;
+}
+
+const fishes = [];
+POPULATION.forEach((speciesName) => {
+  const f = createFish(speciesName);
+  scene.add(f);
+  fishes.push(f);
+});
+
+// ---------- animate ----------
+const clock = new THREE.Clock();
+function tick() {
+  const dt = clock.getDelta();
+  const t = clock.elapsedTime;
+
+  // caustics drift
+  causticsTex.offset.x = (t * 0.03) % 1;
+  causticsTex.offset.y = (t * 0.018) % 1;
+
+  // gentle aquarium swimming
+  fishes.forEach((f, i) => {
+    const brain = f.userData;
+    
+    // Check if it's time to change Y depth target
+    if (t - brain.depthChangeTime > brain.depthChangeDuration) {
+      brain.depthChangeTime = t;
+      brain.depthChangeDuration = 3 + Math.random() * 4;
+      // Pick a new target depth within species' preferred range
+      // preferredDepth is [min, max] where 0=bottom, 1=top
+      const minDepth = brain.preferredDepth[0];
+      const maxDepth = brain.preferredDepth[1];
+      const depthRange = maxDepth - minDepth;
+      const normalizedDepth = minDepth + Math.random() * depthRange; // 0-1 range
+      
+      // Convert to world coordinates: 0 -> -2.0 (bottom), 1 -> 2.8 (top)
+      brain.targetDepth = -2.0 + normalizedDepth * 4.8;
+    }
+    
+    // Check if it's time to change Z position (distance from camera)
+    if (t - brain.zChangeTime > brain.zChangeDuration) {
+      brain.zChangeTime = t;
+      brain.zChangeDuration = 4 + Math.random() * 5;
+      // Pick new Z target within configured depth range
+      const depthMin = CONFIG.movement.depthRange[0];
+      const depthMax = CONFIG.movement.depthRange[1];
+      brain.targetZ = depthMin + Math.random() * (depthMax - depthMin);
+    }
+    
+    // Smoothly move toward target depth and Z position
+    brain.baseY += (brain.targetDepth - brain.baseY) * 0.3 * dt;
+    brain.baseZ += (brain.targetZ - brain.baseZ) * 0.2 * dt;  // Slower Z movement
+    
+    // Swim in current direction (don't turn around on screen)
+    const prevX = f.position.x;
+    const prevY = f.position.y;
+    
+    // Move in facing direction
+    f.position.x += brain.facingDir * brain.wanderSpeed * 2.0 * dt;
+    
+    // Add gentle vertical and depth variation (small oscillations)
+    const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 0.2;  // Minimal Z oscillation
+    const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3;
+    
+    f.position.z = brain.baseZ + wanderZ;
+    f.position.y = brain.baseY + wanderY;
+
+    // When fish leaves screen, turn around off-screen
+    if (f.position.x > 12) { 
+      brain.facingDir = -1;  // Turn to face left
+      f.position.x = 12;
+    }
+    if (f.position.x < -12) { 
+      brain.facingDir = 1;   // Turn to face right
+      f.position.x = -12;
+    }
+    
+    // Keep fish within tank depth bounds (Z axis)
+    const zMin = CONFIG.movement.depthRange[0] - 0.5; // Allow small oscillation beyond range
+    const zMax = CONFIG.movement.depthRange[1] + 0.5;
+    f.position.z = Math.max(zMin, Math.min(zMax, f.position.z));
+    
+    // Clamp vertical position to tank bounds
+    f.position.y = Math.max(-2.0, Math.min(2.8, f.position.y));
+
+    // Update scale based on depth and direction
+    // Formula: scale increases as Z increases (closer = bigger)
+    const depthMin = CONFIG.movement.depthRange[0];
+    const depthMax = CONFIG.movement.depthRange[1];
+    const depthRange = depthMax - depthMin;
+    const depthScale = 0.85 + (f.position.z - depthMin) / depthRange * 0.15;  // 0.85 (far) to 1.0 (near)
+    const finalScaleX = brain.baseScaleX * depthScale;
+    const finalScaleY = brain.baseScaleY * depthScale;
+    
+    // Calculate movement for animation
+    const dx = f.position.x - prevX;
+    const dy = f.position.y - prevY;
+    const dz = f.position.z - (brain.prevZ || f.position.z);
+    
+    // Calculate pitch (tilt up/down) based on vertical movement
+    // For billboard fish, we need to rotate around Z axis
+    const verticalSpeed = dy;
+    const horizontalSpeed = Math.sqrt(dx * dx + dz * dz);
+    
+    brain.smoothPitch = brain.smoothPitch || 0;
+    
+    // Calculate angle: positive dy (up) should tilt head up, negative dy (down) should tilt head down
+    // The sign depends on which way the fish is facing
+    let targetPitch = 0;
+    if (horizontalSpeed > 0.001 || Math.abs(verticalSpeed) > 0.001) {
+      // atan2 gives us the angle of movement
+      targetPitch = Math.atan2(verticalSpeed, horizontalSpeed) * 0.6;
+      // If fish is facing left (flipped), we need to flip the rotation
+      if (brain.facingDir < 0) {
+        targetPitch = -targetPitch;
       }
+    }
+    
+    brain.smoothPitch = brain.smoothPitch * 0.85 + targetPitch * 0.15;
+    
+    // Apply rotation: Z axis for billboard tilt up/down
+    f.rotation.set(0, 0, brain.smoothPitch);
+    
+    // Calculate swimming speed (3D velocity magnitude)
+    const swimSpeed = Math.sqrt(dx * dx + dy * dy + dz * dz) / dt;
+    brain.prevZ = f.position.z;
+    
+    // Normalize speed relative to this fish's base speed
+    // This makes fast swimmers (guppy) and slow swimmers (angelfish) both animate correctly
+    const normalizedSpeed = swimSpeed / (brain.wanderSpeed * 2.0);  // Normalize to 0-1 range
+    
+    // Smooth the speed to avoid jittery animation
+    brain.smoothSpeed = brain.smoothSpeed || 0;
+    brain.smoothSpeed = brain.smoothSpeed * CONFIG.animation.smoothingSpeed + normalizedSpeed * (1.0 - CONFIG.animation.smoothingSpeed);
+    
+    // Calculate turn amount (change in direction)
+    const currentDir = Math.atan2(dy, dx);
+    brain.prevDir = brain.prevDir || currentDir;
+    let dirChange = currentDir - brain.prevDir;
+    
+    // Normalize angle difference to -PI to PI
+    while (dirChange > Math.PI) dirChange -= Math.PI * 2;
+    while (dirChange < -Math.PI) dirChange += Math.PI * 2;
+    
+    // Smooth turn amount
+    brain.smoothTurn = brain.smoothTurn || 0;
+    brain.smoothTurn = brain.smoothTurn * CONFIG.animation.smoothingTurn + dirChange * (1.0 - CONFIG.animation.smoothingTurn);
+    brain.prevDir = currentDir;
+    
+    // Apply scale with facing direction
+    f.scale.set(
+      finalScaleX * brain.facingDir,
+      finalScaleY,
+      1
+    );
 
-      // Fish species definitions
-      const FISH_SPECIES = {
-        angelfish: {
-          texture: '/images/fish/angelfish.png',
-          size: { width: 2.2, height: 2.2 },
-          baseSpeed: 0.12,
-          wanderRange: 2.5,
-          preferredDepth: [0.4, 0.7],  // Mid-tank (0=bottom, 1=top)
-          schooling: false,
-          gridProportions: {
-            rows: [0.35, 0.30, 0.35],        // Tall fins top/bottom, narrow body center
-            cols: [0.30, 0.15, 0.40, 0.15]   // TailFin, TailBase, Body, Head
-          },
-          anatomy: {
-            tailFin: definePart({
-              cells: [[2,1], [3,1]],  // Col 1: Flowing tail fin
-              flexibility: 1.2,
-              amplitude: 0.28,
-              frequency: 5.0,
-              speed: 0.8,
-              phaseOffset: 0.5,
-              movementResponse: 'passive'     // Flows passively, minimal speed response
-            }),
-            tailBase: definePart({
-              cells: [[2,2]],                 // Col 2: Tail peduncle (muscular base)
-              flexibility: 0.4,
-              amplitude: 0.12,
-              frequency: 5.5,
-              speed: 0.75,
-              movementResponse: 'propulsion'  // Drives swimming, strong speed response
-            }),
-            bodyCore: definePart({
-              cells: [[2,3]],                 // Col 3: Body spine (rigid)
-              flexibility: 0.01,
-              amplitude: 0.02,
-              frequency: 6.0,
-              speed: 0.7,
-              movementResponse: 'none'        // Rigid, no movement response
-            }),
-            dorsalFin: definePart({
-              cells: [[1,2], [1,3], [1,4]],  // Top fin across tail base, body, head
-              flexibility: 0.7,
-              amplitude: 0.18,
-              frequency: 6.0,
-              speed: 0.7,
-              phaseOffset: 0.0,
-              // movementResponse: 'passive'  // Responds to turning only
-            }),
-            ventralFin: definePart({
-              cells: [[3,2], [3,3], [3,4]],  // Bottom fin across tail base, body, head
-              flexibility: 0.7,
-              amplitude: 0.18,
-              frequency: 6.0,
-              speed: 0.7,
-              phaseOffset: Math.PI,
-              movementResponse: 'passive'  // Responds to turning only
-            }),
-            headCore: definePart({
-              cells: [[2,4]],                 // Col 4: Head (completely rigid)
-              flexibility: 0.0,
-              amplitude: 0.0,
-              frequency: 6.0,
-              speed: 0.7
-            })
-          }
-        },
-        discus: {
-          texture: '/images/fish/discus.png',
-          size: { width: 1.8, height: 1.8 },
-          baseSpeed: 0.15,
-          wanderRange: 2.8,
-          preferredDepth: [0.2, 1.0],
-          schooling: false,
-          gridProportions: {
-            rows: [0.25, 0.50, 0.25],
-            cols: [0.15, 0.10, 0.55, 0.20]  // TailFin, TailBase, Body (large disc), Head
-          },
-          anatomy: {
-            tailFin: definePart({
-              cells: [[1,1], [2,1], [3,1]],
-              flexibility: 0.9,
-              amplitude: 0.16,
-              frequency: 5.0,
-              speed: 0.65,
-              movementResponse: 'passive'
-            }),
-            tailBase: definePart({
-              cells: [[2,2]],
-              flexibility: 0.3,
-              amplitude: 0.08,
-              frequency: 5.0,
-              speed: 0.65,
-              movementResponse: 'passive'
-            }),
-            dorsalFin: definePart({
-              cells: [[1,1], [1,2], [1,3], [1,4]],  // Top fin across all
-              flexibility: 0.6,
-              amplitude: 0.16,
-              frequency: 5.0,
-              speed: 0.65,
-              phaseOffset: 0.0,
-              movementResponse: 'propulsion'
-            }),
-            ventralFin: definePart({
-              cells: [[3,1], [3,2], [3,3], [3,4]],  // Bottom fin across all
-              flexibility: 0.6,
-              amplitude: 0.16,
-              frequency: 5.0,
-              speed: 0.65,
-              phaseOffset: Math.PI,
-              movementResponse: 'propulsion'
-            }),
-            bodyCore: definePart({
-              cells: [[2,3]],  // Large disc body
-              flexibility: 0.01,
-              amplitude: 0.04,
-              frequency: 5.0,
-              speed: 0.65
-            }),
-            headCore: definePart({
-              cells: [[2,4]],
-              flexibility: 0.0,
-              amplitude: 0.0,
-              frequency: 5.0,
-              speed: 0.65
-            })
-          }
-        },
-        gourami: {
-          texture: '/images/fish/gourami.png',
-          size: { width: 1.5, height: 0.9 },
-          baseSpeed: 0.18,
-          wanderRange: 3.0,
-          preferredDepth: [0.5, 0.8],  // Upper-mid tank
-          schooling: false,
-          gridProportions: {
-            rows: [0.25, 0.50, 0.25],
-            cols: [0.20, 0.15, 0.40, 0.25]  // TailFin, TailBase, Body, Head
-          },
-          anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
-              flexibility: 1.0, amplitude: 0.26, frequency: 6.5, speed: 0.8, 
-              phaseOffset: 0.3,
-              movementResponse: 'propulsion'
-            }),
-            tailBase: definePart({ cells: [[2,2]], flexibility: 0.3, amplitude: 0.12, frequency: 6.5, speed: 0.75 }),
-            bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 7.0, speed: 0.75 }),
-            dorsalFin: definePart({ cells: [[1,1], [1,2], [1,3]], flexibility: 0.3, amplitude: 0.20, frequency: 7.0, speed: 0.75, phaseOffset: 0.0 }),
-            ventralFin: definePart({ cells: [[3,1], [3,2], [3,3]], flexibility: 0.8, amplitude: 0.40, frequency: 5.0, speed: 0.75, phaseOffset: Math.PI }),
-            headCore: definePart({ cells: [[2,4]], flexibility: 0.0, amplitude: 0.0, frequency: 7.0, speed: 0.75 })
-          }
-        },
-        swordtail: {
-          texture: '/images/fish/swordtail.png',
-          size: { width: 2, height: 0.6 },
-          baseSpeed: 0.25,
-          wanderRange: 4.0,
-          preferredDepth: [0.3, 0.6],  // Mid tank
-          schooling: true,
-          gridProportions: {
-            rows: [0.30, 0.40, 0.30],
-            cols: [0.25, 0.15, 0.35, 0.25]  // TailFin (sword!), TailBase, Body, Head
-          },
-          anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
-              flexibility: 1.8, 
-              amplitude: 0.28, 
-              frequency: 4.0, 
-              speed: 0.95, 
-              phaseOffset: 0.4,
-              movementResponse: 'passive'
-            }),  // Lower frequency for smooth sword movement
-            tailBase: definePart({ cells: [[2,2]], 
-              flexibility: 0.5, 
-              amplitude: 0.15,
-              frequency: 5.0, 
-              speed: 0.90,
-              movementResponse: 'propulsion'
-            }),
-            bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 5.5, speed: 0.90 }),
-            dorsalFin: definePart({ cells: [[1,2], [1,3]], flexibility: 0.8, amplitude: 0.20, frequency: 5.5, speed: 0.90, phaseOffset: 0.0 }),
-            ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, amplitude: 0.20, frequency: 5.5, speed: 0.90, phaseOffset: Math.PI }),
-            headCore: definePart({ cells: [[2,4]], flexibility: 0.0, amplitude: 0.0, frequency: 5.5, speed: 0.90 })
-          }
-        },
-        platy: {
-          texture: '/images/fish/platy.png',
-          size: { width: 1.2, height: 0.6 },
-          baseSpeed: 0.22,
-          wanderRange: 3.5,
-          preferredDepth: [0.1, 0.2],  // Lower-mid tank
-          schooling: true,
-          gridProportions: {
-            rows: [0.20, 0.50, 0.30],
-            cols: [0.15, 0.10, 0.45, 0.20]  // TailFin, TailBase, Body, Head
-          },
-          anatomy: {
-            tailFin: definePart({ 
-              cells: [[1,1], [2,1], [3,1]], 
-              flexibility: 1.1, 
-              amplitude: 0.24, 
-              frequency: 6.5, 
-              speed: 0.85, 
-              phaseOffset: 0.3, 
-              movementResponse: 'propulsion' 
-            }),
-            tailBase: definePart({ 
-              cells: [[2,2]], flexibility: 0.4, amplitude: 0.12, 
-              frequency: 6.5, speed: 0.80 }),
-            headCore: definePart({ 
-              cells: [[2,4]], 
-              flexibility: 0.0, 
-              amplitude: 0.0, frequency: 7.0, 
-              speed: 0.80 
-            }),
-            bodyCore: definePart({ 
-              cells: [[2,3]], 
-              flexibility: 0.2, 
-              amplitude: 0.08, frequency: 7.0, 
-              speed: 0.80 
-            }),
-            dorsalFin: definePart({ 
-              cells: [[1,2], [1,3]], 
-              flexibility: 0.8, 
-              amplitude: 0.18, 
-              frequency: 7.0, 
-              speed: 0.80, 
-              movementResponse: 'passive',
-              phaseOffset: 0.0
-            }),
-            ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, 
-              amplitude: 0.18, 
-              frequency: 7.0, 
-              speed: 0.80, 
-              phaseOffset: Math.PI,
-              movementResponse: 'passive'
-            }),
-            
-          }
-        },
-        guppy: {
-          texture: '/images/fish/guppy.png',
-          size: { width: 1.3, height: 0.5 },
-          baseSpeed: 0.30,
-          wanderRange: 4.5,
-          preferredDepth: [0.6, 0.9],  // Upper tank (surface swimmers)
-          schooling: true,
-          gridProportions: {
-            rows: [0.20, 0.50, 0.30],
-            cols: [0.30, 0.10, 0.40, 0.15]  // FancyTail, TailBase, Body, Head
-          },
-          anatomy: {
-            fancyTail: definePart({
-              cells: [[1,1], [2,1], [3,1]],  // Big fancy tail
-              flexibility: 1.2,
-              amplitude: 0.15,
-              frequency: 5.5,
-              speed: 1.0,
-              phaseOffset: 0.5,
-              movementResponse: 'passive'
-            }),
-            tailBase: definePart({
-              cells: [[2,2]],                 // Small tail base
-              flexibility: 0.3,
-              amplitude: 0.08,
-              frequency: 6.0,
-              speed: 1.0,
-              movementResponse: 'propulsion'
-            }),
-            bodyCore: definePart({
-              cells: [[2,3]],                 // Body center
-              flexibility: 0.08,
-              amplitude: 0.10,
-              frequency: 6.0,
-              speed: 1.0
-            }),
-            dorsalFin: definePart({
-              cells: [[1,3]],                 // Small dorsal on body
-              flexibility: 0.5,
-              amplitude: 0.18,
-              frequency: 6.0,
-              speed: 1.0,
-              phaseOffset: 0.0
-            }),
-            ventralFin: definePart({
-              cells: [[3,3]],                 // Small ventral on body
-              flexibility: 0.7,
-              amplitude: 0.18,
-              frequency: 6.0,
-              speed: 1.0,
-              phaseOffset: Math.PI
-            }),
-            headCore: definePart({
-              cells: [[2,4]],                 // Tiny head
-              flexibility: 0.0,
-              amplitude: 0.0,
-              frequency: 6.0,
-              speed: 1.0
-            })
-          }
-        }
-      };
+    // Update shader time, swimming speed, and turn amount
+    f.material.uniforms.uTime.value = t;
+    f.material.uniforms.uSwimSpeed.value = brain.smoothSpeed;
+    f.material.uniforms.uTurnAmount.value = brain.smoothTurn;
+    
+    // Optional: UI controls can override (for debugging)
+    // if (UI.speed && UI.amp) {
+    //   f.material.uniforms.uSpeed.value = parseFloat(UI.speed.value);
+    //   f.material.uniforms.uAmp.value = parseFloat(UI.amp.value);
+    // }
+  });
 
-      // Tank population
-      const POPULATION = [
-        'angelfish', 'discus', 'gourami',  'swordtail',  'platy', 'guppy'  ];
+  // Render the scene
+  renderer.render(scene, camera);
 
-      // Load all fish textures
-      const fishTextures = {};
-      Object.keys(FISH_SPECIES).forEach(species => {
-        fishTextures[species] = loader.load(FISH_SPECIES[species].texture);
-      });
-
-      function createFish(speciesName, spawnDelay) {
-        const species = FISH_SPECIES[speciesName];
-        
-        // Use shared geometry, scale the mesh instead
-        const mat = fishMat.clone();
-        mat.uniforms.uTex.value = fishTextures[speciesName];
-        
-        // Convert anatomy to shader format
-        const parts = Object.values(species.anatomy);
-        const partsArray = [];
-        
-        parts.forEach(part => {
-          // Find min/max row and col from cells
-          const rows = part.cells.map(c => c[0]);
-          const cols = part.cells.map(c => c[1]);
-          const minRow = Math.min(...rows);
-          const maxRow = Math.max(...rows);
-          const minCol = Math.min(...cols);
-          const maxCol = Math.max(...cols);
-          
-          // Encode movementResponse: none=0, passive=1, propulsion=2, stabilizer=3
-          const responseMap = { 'none': 0, 'passive': 1, 'propulsion': 2, 'stabilizer': 3 };
-          const responseCode = responseMap[part.movementResponse] || 0;
-          
-          // Pack into array: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse]
-          partsArray.push(
-            minRow, maxRow, minCol, maxCol,
-            part.flexibility, part.amplitude, part.frequency, part.speed, part.phaseOffset,
-            responseCode
-          );
-        });
-        
-        // Pad to 60 elements (6 parts × 10 values)
-        while (partsArray.length < 60) partsArray.push(0);
-        
-        mat.uniforms.uPartCount.value = parts.length;
-        mat.uniforms.uParts.value = partsArray;
-        
-        // Set custom grid proportions for this species
-        const gridProps = species.gridProportions;
-        mat.uniforms.uGridProps.value = [
-          gridProps.rows[0], gridProps.rows[1], gridProps.rows[2],
-          gridProps.cols[0], gridProps.cols[1], gridProps.cols[2], gridProps.cols[3]
-        ];
-        
-        const m = new THREE.Mesh(fishGeo, mat);
-        
-        // Random starting direction
-        const startFromLeft = Math.random() < 0.5;
-        const facingDir = startFromLeft ? 1 : -1;
-
-        // Vary vertical position more - spread across full tank height
-        const height = -0.5 + Math.random() * 2.5; // -0.5 to 2.0
-        
-        // Spawn position - start off-screen
-        const startX = startFromLeft ? -8 : 8;
-        const startZ = (Math.random() - 0.5) * 5 - 0.5; // -3 to 2
-        
-        // Size based on species (using scale) - base geometry is 2.0 x 0.8
-        const baseScaleX = species.size.width / 2.0;   // Normalize width to base geometry
-        const baseScaleY = species.size.height / 0.8;  // Normalize height to base geometry
-        
-        m.userData = {
-          species: speciesName,
-          baseX: (Math.random() - 0.5) * 8, // Random area, not centered
-          baseZ: startZ,
-          baseY: height,
-          wanderSpeed: species.baseSpeed * (0.8 + Math.random() * 0.4),
-          wanderRange: species.wanderRange,
-          phase: Math.random() * Math.PI * 2,
-          spawnTime: spawnDelay,
-          spawned: false,
-          startX: startX,
-          facingDir: facingDir,
-          baseScaleX: baseScaleX,
-          baseScaleY: baseScaleY,
-          // Vertical movement targets
-          preferredDepth: species.preferredDepth, // [min, max] where 0=bottom, 1=top
-          targetDepth: height,
-          depthChangeTime: 0,
-          depthChangeDuration: 3 + Math.random() * 4, // Change depth every 3-7 seconds
-          // Z-axis (distance from camera) movement
-          targetZ: startZ,
-          zChangeTime: 0,
-          zChangeDuration: 4 + Math.random() * 5, // Change Z every 4-9 seconds
-        };
-        
-        m.position.set(startX, height, startZ);
-        
-        // Set initial scale (will be updated in animation loop)
-        const depthScale = 0.7 + (startZ + 3) * 0.05;  // Closer = bigger
-        m.scale.set(
-          baseScaleX * depthScale * facingDir,
-          baseScaleY * depthScale,
-          1
-        );
-        
-        return m;
-      }
-
-      const fishes = [];
-      POPULATION.forEach((speciesName, i) => {
-        const spawnDelay = i * 0.8; // Stagger spawns every 0.8 seconds
-        const f = createFish(speciesName, spawnDelay);
-        scene.add(f);
-        fishes.push(f);
-      });
-
-      // ---------- animate ----------
-      const clock = new THREE.Clock();
-      function tick() {
-        const dt = clock.getDelta();
-        const t = clock.elapsedTime;
-
-        // caustics drift
-        causticsTex.offset.x = (t * 0.03) % 1;
-        causticsTex.offset.y = (t * 0.018) % 1;
-
-        // gentle aquarium swimming
-        fishes.forEach((f, i) => {
-          const brain = f.userData;
-          
-          // Handle spawn animation
-          if (!brain.spawned) {
-            if (t < brain.spawnTime) {
-              f.visible = false;
-              return;
-            }
-            brain.spawned = true;
-            f.visible = true;
-          }
-          
-          // Swim in from off-screen during first few seconds
-          const timeSinceSpawn = t - brain.spawnTime;
-          const swimInDuration = 3.0;
-          let swimInProgress = Math.min(timeSinceSpawn / swimInDuration, 1.0);
-          
-          // Check if it's time to change Y depth target
-          if (t - brain.depthChangeTime > brain.depthChangeDuration) {
-            brain.depthChangeTime = t;
-            brain.depthChangeDuration = 3 + Math.random() * 4;
-            // Pick a new target depth within species' preferred range
-            // preferredDepth is [min, max] where 0=bottom, 1=top
-            const minDepth = brain.preferredDepth[0];
-            const maxDepth = brain.preferredDepth[1];
-            const depthRange = maxDepth - minDepth;
-            const normalizedDepth = minDepth + Math.random() * depthRange; // 0-1 range
-            
-            // Convert to world coordinates: 0 -> -2.0 (bottom), 1 -> 2.8 (top)
-            brain.targetDepth = -2.0 + normalizedDepth * 4.8;
-          }
-          
-          // Check if it's time to change Z position (distance from camera)
-          if (t - brain.zChangeTime > brain.zChangeDuration) {
-            brain.zChangeTime = t;
-            brain.zChangeDuration = 4 + Math.random() * 5;
-            // Pick new Z target: -1.5 (far) to 1.5 (near) - reduced range for subtlety
-            brain.targetZ = -1.5 + Math.random() * 3;
-          }
-          
-          // Smoothly move toward target depth and Z position
-          brain.baseY += (brain.targetDepth - brain.baseY) * 0.3 * dt;
-          brain.baseZ += (brain.targetZ - brain.baseZ) * 0.2 * dt;  // Slower Z movement
-          
-          // Swim in current direction (don't turn around on screen)
-          const prevX = f.position.x;
-          const prevY = f.position.y;
-          
-          // Move in facing direction
-          f.position.x += brain.facingDir * brain.wanderSpeed * 2.0 * dt;
-          
-          // Add gentle vertical and depth variation (small oscillations)
-          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 0.2;  // Minimal Z oscillation
-          const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3;
-          
-          f.position.z = brain.baseZ + wanderZ;
-          f.position.y = brain.baseY + wanderY;
-
-          // When fish leaves screen, turn around off-screen
-          if (f.position.x > 8) { 
-            brain.facingDir = -1;  // Turn to face left
-            f.position.x = 8;
-          }
-          if (f.position.x < -8) { 
-            brain.facingDir = 1;   // Turn to face right
-            f.position.x = -8;
-          }
-          
-          // Keep fish within tank depth bounds (Z axis)
-          f.position.z = Math.max(-3, Math.min(3, f.position.z));
-          
-          // Clamp vertical position to tank bounds
-          f.position.y = Math.max(-2.0, Math.min(2.8, f.position.y));
-
-          // Update scale based on depth and direction
-          // Z range: -3 (far, small) to 3 (near, large)
-          // Formula: scale increases as Z increases (closer = bigger)
-          const depthScale = 0.7 + (f.position.z + 3) * 0.05;  // Range: 0.7 (far) to 1.0 (near)
-          const finalScaleX = brain.baseScaleX * depthScale;
-          const finalScaleY = brain.baseScaleY * depthScale;
-          
-          // Calculate movement for animation
-          const dx = f.position.x - prevX;
-          const dy = f.position.y - prevY;
-          const dz = f.position.z - (brain.prevZ || f.position.z);
-          
-          // Calculate pitch (tilt up/down) based on vertical movement
-          // For billboard fish, we need to rotate around Z axis
-          const verticalSpeed = dy;
-          const horizontalSpeed = Math.sqrt(dx * dx + dz * dz);
-          
-          brain.smoothPitch = brain.smoothPitch || 0;
-          
-          // Calculate angle: positive dy (up) should tilt head up, negative dy (down) should tilt head down
-          // The sign depends on which way the fish is facing
-          let targetPitch = 0;
-          if (horizontalSpeed > 0.001 || Math.abs(verticalSpeed) > 0.001) {
-            // atan2 gives us the angle of movement
-            targetPitch = Math.atan2(verticalSpeed, horizontalSpeed) * 0.6;
-            // If fish is facing left (flipped), we need to flip the rotation
-            if (brain.facingDir < 0) {
-              targetPitch = -targetPitch;
-            }
-          }
-          
-          brain.smoothPitch = brain.smoothPitch * 0.85 + targetPitch * 0.15;
-          
-          // Apply rotation: Z axis for billboard tilt up/down
-          f.rotation.set(0, 0, brain.smoothPitch);
-          
-          // Calculate swimming speed (3D velocity magnitude)
-          const swimSpeed = Math.sqrt(dx * dx + dy * dy + dz * dz) / dt;
-          brain.prevZ = f.position.z;
-          
-          // Normalize speed relative to this fish's base speed
-          // This makes fast swimmers (guppy) and slow swimmers (angelfish) both animate correctly
-          const normalizedSpeed = swimSpeed / (brain.wanderSpeed * 2.0);  // Normalize to 0-1 range
-          
-          // Smooth the speed to avoid jittery animation
-          brain.smoothSpeed = brain.smoothSpeed || 0;
-          brain.smoothSpeed = brain.smoothSpeed * CONFIG.animation.smoothingSpeed + normalizedSpeed * (1.0 - CONFIG.animation.smoothingSpeed);
-          
-          // Calculate turn amount (change in direction)
-          const currentDir = Math.atan2(dy, dx);
-          brain.prevDir = brain.prevDir || currentDir;
-          let dirChange = currentDir - brain.prevDir;
-          
-          // Normalize angle difference to -PI to PI
-          while (dirChange > Math.PI) dirChange -= Math.PI * 2;
-          while (dirChange < -Math.PI) dirChange += Math.PI * 2;
-          
-          // Smooth turn amount
-          brain.smoothTurn = brain.smoothTurn || 0;
-          brain.smoothTurn = brain.smoothTurn * CONFIG.animation.smoothingTurn + dirChange * (1.0 - CONFIG.animation.smoothingTurn);
-          brain.prevDir = currentDir;
-          
-          // Apply scale with facing direction
-          f.scale.set(
-            finalScaleX * brain.facingDir,
-            finalScaleY,
-            1
-          );
-
-          // Update shader time, swimming speed, and turn amount
-          f.material.uniforms.uTime.value = t;
-          f.material.uniforms.uSwimSpeed.value = brain.smoothSpeed;
-          f.material.uniforms.uTurnAmount.value = brain.smoothTurn;
-          
-          // Optional: UI controls can override (for debugging)
-          // if (UI.speed && UI.amp) {
-          //   f.material.uniforms.uSpeed.value = parseFloat(UI.speed.value);
-          //   f.material.uniforms.uAmp.value = parseFloat(UI.amp.value);
-          // }
-        });
-
-        // Render the scene
-        renderer.render(scene, camera);
-
-        requestAnimationFrame(tick);
-      }
-      tick();
-      addEventListener("resize", () => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
-      });
+  requestAnimationFrame(tick);
+}
+tick();
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
