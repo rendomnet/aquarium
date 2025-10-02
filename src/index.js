@@ -190,7 +190,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           },
           anatomy: {
             tailFin: definePart({
-              cells: [[1,1], [2,1], [3,1]],  // Col 1: Flowing tail fin
+              cells: [[2,1], [3,1]],  // Col 1: Flowing tail fin
               flexibility: 1.2,
               amplitude: 0.28,
               frequency: 5.0,
@@ -221,7 +221,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               frequency: 6.0,
               speed: 0.7,
               phaseOffset: 0.0,
-              movementResponse: 'passive'  // Responds to turning only
+              // movementResponse: 'passive'  // Responds to turning only
             }),
             ventralFin: definePart({
               cells: [[3,2], [3,3], [3,4]],  // Bottom fin across tail base, body, head
@@ -258,14 +258,16 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               flexibility: 0.9,
               amplitude: 0.16,
               frequency: 5.0,
-              speed: 0.65
+              speed: 0.65,
+              movementResponse: 'passive'
             }),
             tailBase: definePart({
               cells: [[2,2]],
               flexibility: 0.3,
               amplitude: 0.08,
               frequency: 5.0,
-              speed: 0.65
+              speed: 0.65,
+              movementResponse: 'passive'
             }),
             dorsalFin: definePart({
               cells: [[1,1], [1,2], [1,3], [1,4]],  // Top fin across all
@@ -273,7 +275,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               amplitude: 0.16,
               frequency: 5.0,
               speed: 0.65,
-              phaseOffset: 0.0
+              phaseOffset: 0.0,
+              movementResponse: 'propulsion'
             }),
             ventralFin: definePart({
               cells: [[3,1], [3,2], [3,3], [3,4]],  // Bottom fin across all
@@ -281,7 +284,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               amplitude: 0.16,
               frequency: 5.0,
               speed: 0.65,
-              phaseOffset: Math.PI
+              phaseOffset: Math.PI,
+              movementResponse: 'propulsion'
             }),
             bodyCore: definePart({
               cells: [[2,3]],  // Large disc body
@@ -364,18 +368,51 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           preferredDepth: [0.1, 0.2],  // Lower-mid tank
           schooling: true,
           gridProportions: {
-            rows: [0.30, 0.40, 0.30],
-            cols: [0.22, 0.15, 0.38, 0.25]  // TailFin, TailBase, Body, Head
+            rows: [0.20, 0.50, 0.30],
+            cols: [0.15, 0.10, 0.45, 0.20]  // TailFin, TailBase, Body, Head
           },
           anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
-              flexibility: 1.6, amplitude: 0.24, 
-              frequency: 6.5, speed: 0.85, phaseOffset: 0.3, movementResponse: 'propulsion' }),
-            tailBase: definePart({ cells: [[2,2]], flexibility: 0.4, amplitude: 0.12, frequency: 6.5, speed: 0.80 }),
-            bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 7.0, speed: 0.80 }),
-            dorsalFin: definePart({ cells: [[1,2], [1,3]], flexibility: 0.8, amplitude: 0.18, frequency: 7.0, speed: 0.80, phaseOffset: 0.0 }),
-            ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, amplitude: 0.18, frequency: 7.0, speed: 0.80, phaseOffset: Math.PI }),
-            headCore: definePart({ cells: [[2,4]], flexibility: 0.0, amplitude: 0.0, frequency: 7.0, speed: 0.80 })
+            tailFin: definePart({ 
+              cells: [[1,1], [2,1], [3,1]], 
+              flexibility: 1.1, 
+              amplitude: 0.24, 
+              frequency: 6.5, 
+              speed: 0.85, 
+              phaseOffset: 0.3, 
+              movementResponse: 'propulsion' 
+            }),
+            tailBase: definePart({ 
+              cells: [[2,2]], flexibility: 0.4, amplitude: 0.12, 
+              frequency: 6.5, speed: 0.80 }),
+            headCore: definePart({ 
+              cells: [[2,4]], 
+              flexibility: 0.0, 
+              amplitude: 0.0, frequency: 7.0, 
+              speed: 0.80 
+            }),
+            bodyCore: definePart({ 
+              cells: [[2,3]], 
+              flexibility: 0.2, 
+              amplitude: 0.08, frequency: 7.0, 
+              speed: 0.80 
+            }),
+            dorsalFin: definePart({ 
+              cells: [[1,2], [1,3]], 
+              flexibility: 0.8, 
+              amplitude: 0.18, 
+              frequency: 7.0, 
+              speed: 0.80, 
+              movementResponse: 'passive',
+              phaseOffset: 0.0
+            }),
+            ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, 
+              amplitude: 0.18, 
+              frequency: 7.0, 
+              speed: 0.80, 
+              phaseOffset: Math.PI,
+              movementResponse: 'passive'
+            }),
+            
           }
         },
         guppy: {
@@ -541,7 +578,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
         m.position.set(startX, height, startZ);
         
         // Set initial scale (will be updated in animation loop)
-        const depthScale = 1.0 - (startZ + 3) * 0.08;
+        const depthScale = 0.7 + (startZ + 3) * 0.05;  // Closer = bigger
         m.scale.set(
           baseScaleX * depthScale * facingDir,
           baseScaleY * depthScale,
@@ -646,7 +683,9 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           f.position.y = Math.max(-2.0, Math.min(2.8, f.position.y));
 
           // Update scale based on depth and direction
-          const depthScale = 1.0 - (f.position.z + 3) * 0.08;
+          // Z range: -3 (far, small) to 3 (near, large)
+          // Formula: scale increases as Z increases (closer = bigger)
+          const depthScale = 0.7 + (f.position.z + 3) * 0.05;  // Range: 0.7 (far) to 1.0 (near)
           const finalScaleX = brain.baseScaleX * depthScale;
           const finalScaleY = brain.baseScaleY * depthScale;
           
