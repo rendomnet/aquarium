@@ -98,16 +98,12 @@ import * as THREE from "three";
       // 1. Distance from spine (center) - spine is rigid, edges are flexible
       float distFromSpine = abs(vUv.y - 0.5) * 2.0;  // 0 = spine, 1 = edge
       
-      // 2. Position along body - FLIPPED: uv.x=0 is tail, uv.x=1 is head (texture faces right)
-      float bodyPosition = 1.0 - vUv.x;  // 0 = head, 1 = tail
+      // 2. Position along body - uv.x=0 is tail, uv.x=1 is head (texture faces right)
+      float bodyPosition = vUv.x;  // 0 = tail, 1 = head (NO FLIP!)
       
-      // 3. Base flexibility from physics
-      // Head region (0-0.25) is rigid, gradually increases toward tail
-      float headRigidity = 1.0 - smoothstep(0.0, 0.25, bodyPosition);
-      float tailFlexibility = smoothstep(0.25, 1.0, bodyPosition);
-      
-      // Base flexibility: spine stays rigid, edges flex based on position
-      float baseFlexibility = distFromSpine * tailFlexibility * (1.0 - headRigidity * 0.95);
+      // 3. Physics constraints
+      // Only apply spine constraint - let anatomical parts handle head/tail
+      float spineConstraint = 0.15 + distFromSpine * 0.85;  // 0.15 at spine, 1.0 at edges
       
       // 4. Now find which anatomical part we're in and get its properties
       float finalAmplitude = 0.0;
@@ -150,7 +146,7 @@ import * as THREE from "three";
           
           if (influence > partModifier) {
             // Use the strongest part's properties
-            partModifier = influence;
+            partModifier = influence * flexibility;  // Include part's flexibility
             finalAmplitude = amplitude;
             finalFrequency = frequency;
             finalSpeed = speed;
@@ -159,14 +155,15 @@ import * as THREE from "three";
         }
       }
       
-      // 5. Combine physics-based flexibility with part-specific animation
-      float totalFlexibility = baseFlexibility * (partModifier > 0.0 ? 1.0 : 0.5);
+      // 5. Apply physics constraints to part flexibility
+      // Part flexibility is PRIMARY, spine constraint prevents center from moving too much
+      float totalFlexibility = partModifier * spineConstraint;
       
       // 6. Apply animation
       float phase = uTime * finalSpeed + vUv.x * finalFrequency + finalPhase;
       float sway = sin(phase) * finalAmplitude * totalFlexibility;
       float und = cos(phase * 0.6) * finalAmplitude * 0.1 * totalFlexibility;
-      float roll = sin(phase * 0.7) * finalAmplitude * 0.3 * totalFlexibility * distFromSpine;
+      float roll = sin(phase * 0.7) * finalAmplitude * 0.3 * totalFlexibility;
       
       vec3 pos = position;
       pos.y += sway;
@@ -215,11 +212,11 @@ import * as THREE from "three";
           preferredDepth: [0.3, 1.2],
           schooling: false,
           anatomy: {
-            headCore: definePart([[2,1]], 0.0, 0.0, 6.0, 0.7),
-            bodyCore: definePart([[2,2]], 0.01, 0.02, 6.0, 0.7),  // Much more rigid spine
-            dorsalFin: definePart([[1,1], [1,2], [1,3]], 0.7, 0.18, 6.0, 0.7, 0.0),
-            ventralFin: definePart([[3,1], [3,2], [3,3]], 0.7, 0.18, 6.0, 0.7, Math.PI),
-            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.25, 5.0, 0.8, 0.5)
+            tailFin: definePart([[1,1], [2,1], [3,1]], 1.0, 0.25, 5.0, 0.8, 0.5),  // TAIL = Col 1 (left)
+            bodyCore: definePart([[2,2]], 0.01, 0.02, 6.0, 0.7),  // BODY = Col 2 (center)
+            dorsalFin: definePart([[1,2], [1,3]], 0.7, 0.18, 6.0, 0.7, 0.0),  // Dorsal on body+head
+            ventralFin: definePart([[3,2], [3,3]], 0.7, 0.18, 6.0, 0.7, Math.PI),  // Ventral on body+head
+            headCore: definePart([[2,3]], 0.0, 0.0, 6.0, 0.7)  // HEAD = Col 3 (right)
           }
         },
         discus: {
@@ -230,9 +227,9 @@ import * as THREE from "three";
           preferredDepth: [0.2, 1.0],
           schooling: false,
           anatomy: {
-            headCore: definePart([[2,1]], 0.0, 0.0, 5.0, 0.65),
-            bodyDisc: definePart([[1,1], [2,1], [3,1], [1,2], [2,2], [3,2]], 0.02, 0.08, 5.0, 0.65),
-            tailFin: definePart([[1,3], [2,3], [3,3]], 0.85, 0.15, 5.0, 0.65, 0.0)
+            tailFin: definePart([[1,1], [2,1], [3,1]], 0.85, 0.15, 5.0, 0.65, 0.0),  // TAIL = Col 1
+            bodyDisc: definePart([[1,2], [2,2], [3,2], [1,3], [2,3], [3,3]], 0.02, 0.08, 5.0, 0.65),  // BODY+HEAD = Col 2+3
+            headCore: definePart([[2,3]], 0.0, 0.0, 5.0, 0.65)  // HEAD = Col 3
           }
         },
         gourami: {
@@ -243,11 +240,11 @@ import * as THREE from "three";
           preferredDepth: [0.5, 1.5],
           schooling: false,
           anatomy: {
-            headCore: definePart([[2,1]], 0.0, 0.0, 7.0, 0.75),
-            bodyCore: definePart([[2,2]], 0.08, 0.10, 7.0, 0.75),
-            dorsalFin: definePart([[1,1], [1,2]], 0.6, 0.18, 7.0, 0.75, 0.0),
-            ventralFin: definePart([[3,1], [3,2]], 0.6, 0.18, 7.0, 0.75, Math.PI),
-            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.22, 6.5, 0.8, 0.3)
+            tailFin: definePart([[1,1], [2,1], [3,1]], 1.8, 0.26, 6.5, 0.8, 0.3),  // TAIL = Col 1
+            bodyCore: definePart([[2,2]], 0.05, 0.08, 7.0, 0.75),  // BODY = Col 2
+            dorsalFin: definePart([[1,1], [1,2]], 0.8, 0.20, 7.0, 0.75, 0.0),  // Dorsal on tail+body
+            ventralFin: definePart([[3,1], [3,2]], 0.8, 0.20, 7.0, 0.75, Math.PI),  // Ventral on tail+body
+            headCore: definePart([[2,3]], 0.0, 0.0, 7.0, 0.75)  // HEAD = Col 3
           }
         },
         swordtail: {
@@ -258,11 +255,11 @@ import * as THREE from "three";
           preferredDepth: [0.0, 1.0],
           schooling: true,
           anatomy: {
-            headCore: definePart([[2,1]], 0.0, 0.0, 7.5, 0.90),
-            bodyCore: definePart([[2,2]], 0.10, 0.12, 7.5, 0.90),
-            dorsalFin: definePart([[1,1], [1,2]], 0.5, 0.16, 7.5, 0.90, 0.0),
-            ventralFin: definePart([[3,1], [3,2]], 0.5, 0.16, 7.5, 0.90, Math.PI),
-            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.24, 7.0, 0.95, 0.4)
+            tailFin: definePart([[1,1], [2,1], [3,1]], 2.0, 0.30, 7.0, 0.95, 0.4),  // TAIL = Col 1
+            bodyCore: definePart([[2,2]], 0.05, 0.08, 7.5, 0.90),  // BODY = Col 2
+            dorsalFin: definePart([[1,1], [1,2]], 0.8, 0.20, 7.5, 0.90, 0.0),  // Dorsal on tail+body
+            ventralFin: definePart([[3,1], [3,2]], 0.8, 0.20, 7.5, 0.90, Math.PI),  // Ventral on tail+body
+            headCore: definePart([[2,3]], 0.0, 0.0, 7.5, 0.90)  // HEAD = Col 3
           }
         },
         platy: {
@@ -273,11 +270,11 @@ import * as THREE from "three";
           preferredDepth: [-0.2, 0.8],
           schooling: true,
           anatomy: {
-            headCore: definePart([[2,1]], 0.0, 0.0, 7.0, 0.80),
-            bodyCore: definePart([[2,2]], 0.10, 0.12, 7.0, 0.80),
-            dorsalFin: definePart([[1,1], [1,2]], 0.55, 0.16, 7.0, 0.80, 0.0),
-            ventralFin: definePart([[3,1], [3,2]], 0.55, 0.16, 7.0, 0.80, Math.PI),
-            tailFin: definePart([[1,3], [2,3], [3,3]], 1.0, 0.20, 6.5, 0.85, 0.3)
+            tailFin: definePart([[1,1], [2,1], [3,1]], 1.8, 0.25, 6.5, 0.85, 0.3),  // TAIL = Col 1
+            bodyCore: definePart([[2,2]], 0.05, 0.08, 7.0, 0.80),  // BODY = Col 2
+            dorsalFin: definePart([[1,1], [1,2]], 0.8, 0.18, 7.0, 0.80, 0.0),  // Dorsal on tail+body
+            ventralFin: definePart([[3,1], [3,2]], 0.8, 0.18, 7.0, 0.80, Math.PI),  // Ventral on tail+body
+            headCore: definePart([[2,3]], 0.0, 0.0, 7.0, 0.80)  // HEAD = Col 3
           }
         },
         guppy: {
@@ -288,11 +285,11 @@ import * as THREE from "three";
           preferredDepth: [0.3, 1.3],
           schooling: true,
           anatomy: {
-            headCore: definePart([[2,1]], 0.0, 0.0, 8.0, 1.0),
-            bodyCore: definePart([[2,2]], 0.15, 0.14, 8.0, 1.0),
-            dorsalFin: definePart([[1,1], [1,2]], 0.6, 0.18, 8.0, 1.0, 0.0),
-            ventralFin: definePart([[3,1], [3,2]], 0.6, 0.18, 8.0, 1.0, Math.PI),
-            fancyTail: definePart([[1,3], [2,3], [3,3]], 1.0, 0.28, 7.5, 1.0, 0.5)
+            fancyTail: definePart([[1,1], [2,1], [3,1]], 2.5, 0.35, 7.5, 1.0, 0.5),  // TAIL = Col 1 (big fancy tail!)
+            bodyCore: definePart([[2,2]], 0.10, 0.12, 8.0, 1.0),  // BODY = Col 2
+            dorsalFin: definePart([[1,1], [1,2]], 0.9, 0.22, 8.0, 1.0, 0.0),  // Dorsal on tail+body
+            ventralFin: definePart([[3,1], [3,2]], 0.9, 0.22, 8.0, 1.0, Math.PI),  // Ventral on tail+body
+            headCore: definePart([[2,3]], 0.0, 0.0, 8.0, 1.0)  // HEAD = Col 3
           }
         }
       };
