@@ -88,8 +88,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           uAmpMax: { value: CONFIG.animation.amplitudeMax },
           // Anatomical part system - up to 6 parts per fish
           uPartCount: { value: 0 },
-          // Each part: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset]
-          uParts: { value: new Array(6).fill(0).map(() => [0,0,0,0,0,0,0,0,0]) },
+          // Each part: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse]
+          uParts: { value: new Array(6).fill(0).map(() => [0,0,0,0,0,0,0,0,0,0]) },
           // Grid proportions: [row1, row2, row3, col1, col2, col3, col4]
           uGridProps: { value: [0.33, 0.33, 0.34, 0.25, 0.25, 0.25, 0.25] },
         },
@@ -159,8 +159,17 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
       };
 
       // Helper to define anatomical parts with named parameters
-      function definePart({ cells, flexibility, amplitude, frequency, speed, phaseOffset = 0 }) {
-        return { cells, flexibility, amplitude, frequency, speed, phaseOffset };
+      // movementResponse: 'propulsion' | 'passive' | 'stabilizer' | 'none'
+      function definePart({ 
+        cells, 
+        flexibility, 
+        amplitude, 
+        frequency, 
+        speed, 
+        phaseOffset = 0,
+        movementResponse = 'none'  // How this part responds to swimming speed
+      }) {
+        return { cells, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse };
       }
 
       // Fish species definitions
@@ -174,7 +183,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           schooling: false,
           gridProportions: {
             rows: [0.35, 0.30, 0.35],        // Tall fins top/bottom, narrow body center
-            cols: [0.20, 0.15, 0.40, 0.25]   // TailFin, TailBase, Body, Head
+            cols: [0.30, 0.15, 0.40, 0.15]   // TailFin, TailBase, Body, Head
           },
           anatomy: {
             tailFin: definePart({
@@ -183,21 +192,24 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               amplitude: 0.28,
               frequency: 5.0,
               speed: 0.8,
-              phaseOffset: 0.5
+              phaseOffset: 0.5,
+              movementResponse: 'passive'     // Flows passively, minimal speed response
             }),
             tailBase: definePart({
               cells: [[2,2]],                 // Col 2: Tail peduncle (muscular base)
               flexibility: 0.4,
               amplitude: 0.12,
               frequency: 5.5,
-              speed: 0.75
+              speed: 0.75,
+              movementResponse: 'propulsion'  // Drives swimming, strong speed response
             }),
             bodyCore: definePart({
               cells: [[2,3]],                 // Col 3: Body spine (rigid)
               flexibility: 0.01,
               amplitude: 0.02,
               frequency: 6.0,
-              speed: 0.7
+              speed: 0.7,
+              movementResponse: 'none'        // Rigid, no movement response
             }),
             dorsalFin: definePart({
               cells: [[1,2], [1,3], [1,4]],  // Top fin across tail base, body, head
@@ -205,7 +217,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               amplitude: 0.18,
               frequency: 6.0,
               speed: 0.7,
-              phaseOffset: 0.0
+              phaseOffset: 0.0,
+              movementResponse: 'passive'  // Responds to turning only
             }),
             ventralFin: definePart({
               cells: [[3,2], [3,3], [3,4]],  // Bottom fin across tail base, body, head
@@ -213,7 +226,8 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               amplitude: 0.18,
               frequency: 6.0,
               speed: 0.7,
-              phaseOffset: Math.PI
+              phaseOffset: Math.PI,
+              movementResponse: 'passive'  // Responds to turning only
             }),
             headCore: definePart({
               cells: [[2,4]],                 // Col 4: Head (completely rigid)
@@ -294,7 +308,11 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
             cols: [0.20, 0.15, 0.40, 0.25]  // TailFin, TailBase, Body, Head
           },
           anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], flexibility: 1.0, amplitude: 0.26, frequency: 6.5, speed: 0.8, phaseOffset: 0.3 }),
+            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
+              flexibility: 1.0, amplitude: 0.26, frequency: 6.5, speed: 0.8, 
+              phaseOffset: 0.3,
+              movementResponse: 'propulsion'
+            }),
             tailBase: definePart({ cells: [[2,2]], flexibility: 0.3, amplitude: 0.12, frequency: 6.5, speed: 0.75 }),
             bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 7.0, speed: 0.75 }),
             dorsalFin: definePart({ cells: [[1,1], [1,2], [1,3]], flexibility: 0.3, amplitude: 0.20, frequency: 7.0, speed: 0.75, phaseOffset: 0.0 }),
@@ -314,8 +332,21 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
             cols: [0.25, 0.15, 0.35, 0.25]  // TailFin (sword!), TailBase, Body, Head
           },
           anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], flexibility: 1.8, amplitude: 0.28, frequency: 4.0, speed: 0.95, phaseOffset: 0.4 }),  // Lower frequency for smooth sword movement
-            tailBase: definePart({ cells: [[2,2]], flexibility: 0.5, amplitude: 0.15, frequency: 5.0, speed: 0.90 }),
+            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
+              flexibility: 1.8, 
+              amplitude: 0.28, 
+              frequency: 4.0, 
+              speed: 0.95, 
+              phaseOffset: 0.4,
+              movementResponse: 'passive'
+            }),  // Lower frequency for smooth sword movement
+            tailBase: definePart({ cells: [[2,2]], 
+              flexibility: 0.5, 
+              amplitude: 0.15,
+              frequency: 5.0, 
+              speed: 0.90,
+              movementResponse: 'propulsion'
+            }),
             bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 5.5, speed: 0.90 }),
             dorsalFin: definePart({ cells: [[1,2], [1,3]], flexibility: 0.8, amplitude: 0.20, frequency: 5.5, speed: 0.90, phaseOffset: 0.0 }),
             ventralFin: definePart({ cells: [[3,2], [3,3]], flexibility: 0.8, amplitude: 0.20, frequency: 5.5, speed: 0.90, phaseOffset: Math.PI }),
@@ -334,7 +365,9 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
             cols: [0.22, 0.15, 0.38, 0.25]  // TailFin, TailBase, Body, Head
           },
           anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], flexibility: 1.6, amplitude: 0.24, frequency: 6.5, speed: 0.85, phaseOffset: 0.3 }),
+            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
+              flexibility: 1.6, amplitude: 0.24, 
+              frequency: 6.5, speed: 0.85, phaseOffset: 0.3, movementResponse: 'propulsion' }),
             tailBase: definePart({ cells: [[2,2]], flexibility: 0.4, amplitude: 0.12, frequency: 6.5, speed: 0.80 }),
             bodyCore: definePart({ cells: [[2,3]], flexibility: 0.05, amplitude: 0.08, frequency: 7.0, speed: 0.80 }),
             dorsalFin: definePart({ cells: [[1,2], [1,3]], flexibility: 0.8, amplitude: 0.18, frequency: 7.0, speed: 0.80, phaseOffset: 0.0 }),
@@ -351,7 +384,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           schooling: true,
           gridProportions: {
             rows: [0.20, 0.50, 0.30],
-            cols: [0.25, 0.10, 0.40, 0.25]  // FancyTail, TailBase, Body, Head
+            cols: [0.30, 0.10, 0.40, 0.15]  // FancyTail, TailBase, Body, Head
           },
           anatomy: {
             fancyTail: definePart({
@@ -360,14 +393,16 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
               amplitude: 0.15,
               frequency: 5.5,
               speed: 1.0,
-              phaseOffset: 0.5
+              phaseOffset: 0.5,
+              movementResponse: 'passive'
             }),
             tailBase: definePart({
               cells: [[2,2]],                 // Small tail base
               flexibility: 0.3,
               amplitude: 0.08,
               frequency: 6.0,
-              speed: 1.0
+              speed: 1.0,
+              movementResponse: 'propulsion'
             }),
             bodyCore: definePart({
               cells: [[2,3]],                 // Body center
@@ -433,15 +468,20 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           const minCol = Math.min(...cols);
           const maxCol = Math.max(...cols);
           
-          // Pack into array: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset]
+          // Encode movementResponse: none=0, passive=1, propulsion=2, stabilizer=3
+          const responseMap = { 'none': 0, 'passive': 1, 'propulsion': 2, 'stabilizer': 3 };
+          const responseCode = responseMap[part.movementResponse] || 0;
+          
+          // Pack into array: [minRow, maxRow, minCol, maxCol, flexibility, amplitude, frequency, speed, phaseOffset, movementResponse]
           partsArray.push(
             minRow, maxRow, minCol, maxCol,
-            part.flexibility, part.amplitude, part.frequency, part.speed, part.phaseOffset
+            part.flexibility, part.amplitude, part.frequency, part.speed, part.phaseOffset,
+            responseCode
           );
         });
         
-        // Pad to 54 elements (6 parts × 9 values)
-        while (partsArray.length < 54) partsArray.push(0);
+        // Pad to 60 elements (6 parts × 10 values)
+        while (partsArray.length < 60) partsArray.push(0);
         
         mat.uniforms.uPartCount.value = parts.length;
         mat.uniforms.uParts.value = partsArray;

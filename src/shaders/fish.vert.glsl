@@ -5,7 +5,7 @@ uniform float uDragStrength;  // Drag strength from config
 uniform float uSpeedMin, uSpeedMax;  // Speed response range
 uniform float uAmpMin, uAmpMax;  // Amplitude range
 uniform int uPartCount;
-uniform float uParts[54]; // 6 parts × 9 values each
+uniform float uParts[60]; // 6 parts × 10 values each
 uniform float uGridProps[7]; // [row1, row2, row3, col1, col2, col3, col4] proportions
 varying vec2 vUv;
 varying vec3 vWorldPos;  // World position for caustics
@@ -29,11 +29,12 @@ void main() {
   float finalAmplitude = 0.0;
   float finalFrequency = 1.0;
   float finalPhase = 0.0;
+  float finalMovementResponse = 0.0;  // 0=none, 1=passive, 2=propulsion, 3=stabilizer
   
   for (int i = 0; i < 6; i++) {
     if (i >= uPartCount) break;
     
-    int baseIdx = i * 9;
+    int baseIdx = i * 10;
     float minRow = uParts[baseIdx + 0];
     float maxRow = uParts[baseIdx + 1];
     float minCol = uParts[baseIdx + 2];
@@ -43,6 +44,7 @@ void main() {
     float frequency = uParts[baseIdx + 6];
     float speed = uParts[baseIdx + 7];
     float phaseOffset = uParts[baseIdx + 8];
+    float movementResponse = uParts[baseIdx + 9];
     
     // Convert row/col to UV space using custom grid proportions
     // Rows: bottom to top (row 3, 2, 1)
@@ -80,73 +82,59 @@ void main() {
     if (vUv.x >= colMin - 0.05 && vUv.x <= colMax + 0.05 &&
         vUv.y >= rowMin - 0.05 && vUv.y <= rowMax + 0.05) {
       
-      // Calculate influence (smooth at edges)
       float xInfluence = smoothstep(colMin - 0.05, colMin + 0.02, vUv.x) * 
                          (1.0 - smoothstep(colMax - 0.02, colMax + 0.05, vUv.x));
       float yInfluence = smoothstep(rowMin - 0.05, rowMin + 0.02, vUv.y) * 
                          (1.0 - smoothstep(rowMax - 0.02, rowMax + 0.05, vUv.y));
       float influence = xInfluence * yInfluence;
-      
-      // Accumulate part properties (weighted by influence)
-      if (influence > partModifier) {
-        partModifier = flexibility * influence;
-        finalSpeed = speed;
-        finalAmplitude = amplitude;
-        finalFrequency = frequency;
-        finalPhase = phaseOffset;
-      }
+            // Accumulate part properties (weighted by influence)
+        if (influence > partModifier) {
+          partModifier = flexibility * influence;
+          finalSpeed = speed;
+          finalAmplitude = amplitude;
+          finalFrequency = frequency;
+          finalPhase = phaseOffset;
+          finalMovementResponse = movementResponse;
+        }
     }
   }
   
   // 5. Apply physics constraints to part flexibility
   // Part flexibility is PRIMARY, spine constraint prevents center from moving too much
   float totalFlexibility = partModifier * spineConstraint;
+  float totalMovementResponse = finalMovementResponse * partModifier;
   
-  // 6. Apply animation modulated by swimming speed
-  // Tail base (muscular) responds MORE to speed, tail fin (passive) responds LESS
-  // Calculate grid boundaries for tail detection
-  float gridCol1End = uGridProps[3];
-  float gridCol2End = gridCol1End + uGridProps[4];
+  // 6. Apply animation based on part's movementResponse property
+  // 0=none, 1=passive, 2=propulsion, 3=stabilizer
   
-  // Determine which body part we're in
-  float isTailBase = (vUv.x > gridCol1End && vUv.x < gridCol2End) ? 1.0 : 0.0;
-  float isTailFin = (vUv.x < gridCol1End) ? 1.0 : 0.0;
-  float isFin = (vUv.y < 0.3 || vUv.y > 0.7) ? 1.0 : 0.0; // Top/bottom fins
-  
-  // TAIL BASE: Frequency increases with speed (propulsion muscle beats faster)
-  // TAIL FIN: Passive, no speed modulation (just flows)
-  // FINS: No speed modulation (only respond to turning)
   float speedModulator = 1.0;
-  if (isTailBase > 0.5) {
-    // Tail base: frequency increases significantly with speed
+  float amplitudeModulator = 1.0;
+  
+  if (finalMovementResponse > 1.5) {
+    // PROPULSION (2): Tail base - frequency and amplitude increase with speed
     speedModulator = clamp(uSpeedMin + uSwimSpeed * 1.5, uSpeedMin, uSpeedMax);
-  } else if (isTailFin > 0.5) {
-    // Tail fin: minimal speed response (passive flow)
+    amplitudeModulator = clamp(uAmpMin + uSwimSpeed * 1.0, uAmpMin, uAmpMax);
+  } else if (finalMovementResponse > 0.5) {
+    // PASSIVE (1): Tail fin - minimal speed response (passive flow)
     speedModulator = clamp(0.8 + uSwimSpeed * 0.3, 0.8, 1.2);
+    amplitudeModulator = 1.0;  // No amplitude change
   }
-  // Fins: speedModulator stays at 1.0 (no speed response)
+  // NONE (0) or STABILIZER (3): No speed modulation (stays at 1.0)
   
   float phase = uTime * finalSpeed * speedModulator + vUv.x * finalFrequency + finalPhase;
-  
-  // AMPLITUDE: Only tail base increases amplitude with speed
-  float amplitudeModulator = 1.0;
-  if (isTailBase > 0.5) {
-    amplitudeModulator = clamp(uAmpMin + uSwimSpeed * 1.0, uAmpMin, uAmpMax);
-  }
-  
   float sway = sin(phase) * finalAmplitude * totalFlexibility * amplitudeModulator;
   
-  // DRAG/LAG: Affects tail and fins differently
-  // Tail: lags based on distance from head
-  // Fins: respond to turning for stability
+  // DRAG/LAG: Different for stabilizers vs tail
   float dragAmount = 0.0;
-  if (isFin > 0.5) {
-    // Fins respond to turning (stabilization)
+  if (finalMovementResponse > 2.5) {
+    // STABILIZER (3): Fins respond to turning for stability
     dragAmount = uTurnAmount * totalFlexibility * uDragStrength * 0.5;
-  } else {
-    // Tail lags behind when turning
+  } else if (finalMovementResponse > 0.1) {
+    // PASSIVE (1) or PROPULSION (2): Tail lags based on distance from head
     dragAmount = (1.0 - vUv.x) * uTurnAmount * totalFlexibility * uDragStrength;
   }
+  // NONE (0): No drag response
+  
   sway += dragAmount;
   
   // Small vertical undulation (Y axis) - much less than horizontal
