@@ -35,7 +35,7 @@ const CONFIG = {
   
   // Fish movement bounds
   movement: {
-    depthRange: [-1, 1],          // Z-axis range [min, max] for fish depth (distance from camera)
+    depthRange: [0, 2],          // Z-axis range [min, max] for fish depth (distance from camera)
   }
 };
 
