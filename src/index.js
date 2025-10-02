@@ -188,12 +188,12 @@ import * as THREE from "three";
       
       // 6. Apply animation modulated by swimming speed
       // Tail moves faster when fish swims faster
-      float speedModulator = 0.5 + uSwimSpeed * 1.2;  // Min 0.5, more subtle increase
+      float speedModulator = clamp(0.5 + uSwimSpeed * 1.2, 0.5, 2.0);  // Min 0.5, max 2.0
       float phase = uTime * finalSpeed * speedModulator + vUv.x * finalFrequency + finalPhase;
       
       // Main tail sway - side to side (Z axis)
       // Amplitude also increases slightly with speed
-      float amplitudeModulator = 0.7 + uSwimSpeed * 0.8;  // More subtle amplitude change
+      float amplitudeModulator = clamp(0.7 + uSwimSpeed * 0.8, 0.7, 1.5);  // Min 0.7, max 1.5
       float sway = sin(phase) * finalAmplitude * totalFlexibility * amplitudeModulator;
       
       // Small vertical undulation (Y axis) - much less than horizontal
@@ -352,14 +352,19 @@ import * as THREE from "three";
           preferredDepth: [0.5, 1.5],
           schooling: false,
           gridProportions: {
-            rows: [0.30, 0.40, 0.30],    // Balanced
-            cols: [0.30, 0.40, 0.30]     // Balanced proportions
+            rows: [0.25, 0.50, 0.25],    // Balanced
+            cols: [0.20, 0.50, 0.30]     // Balanced proportions
           },
           anatomy: {
-            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], flexibility: 1.8, amplitude: 0.26, frequency: 6.5, speed: 0.8, phaseOffset: 0.3 }),
+            tailFin: definePart({ cells: [[1,1], [2,1], [3,1]], 
+              flexibility: 0.8, 
+              amplitude: 0.26, 
+              frequency: 6.5, 
+              speed: 0.8, 
+              phaseOffset: 0.3 }),
             bodyCore: definePart({ cells: [[2,2]], flexibility: 0.05, amplitude: 0.08, frequency: 7.0, speed: 0.75 }),
-            dorsalFin: definePart({ cells: [[1,1], [1,2]], flexibility: 0.8, amplitude: 0.20, frequency: 7.0, speed: 0.75, phaseOffset: 0.0 }),
-            ventralFin: definePart({ cells: [[3,1], [3,2]], flexibility: 0.8, amplitude: 0.20, frequency: 7.0, speed: 0.75, phaseOffset: Math.PI }),
+            dorsalFin: definePart({ cells: [[1,1], [1,2]], flexibility: 0.3, amplitude: 0.20, frequency: 7.0, speed: 0.75, phaseOffset: 0.0 }),
+            ventralFin: definePart({ cells: [[3,1], [3,2]], flexibility: 0.8, amplitude: 0.40, frequency: 5.0, speed: 0.75, phaseOffset: Math.PI }),
             headCore: definePart({ cells: [[2,3]], flexibility: 0.0, amplitude: 0.0, frequency: 7.0, speed: 0.75 })
           }
         },
@@ -409,7 +414,7 @@ import * as THREE from "three";
           preferredDepth: [0.3, 1.3],
           schooling: true,
           gridProportions: {
-            rows: [0.35, 0.30, 0.35],    // Larger fins top/bottom, small body
+            rows: [0.20, 0.50, 0.30],    // Larger fins top/bottom, small body
             cols: [0.30, 0.40, 0.30]     // Tail (30%), body (40%), head (30%)
           },
           anatomy: {
