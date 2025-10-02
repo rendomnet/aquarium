@@ -179,7 +179,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           size: { width: 2.2, height: 2.2 },
           baseSpeed: 0.12,
           wanderRange: 2.5,
-          preferredDepth: [0.3, 1.2],
+          preferredDepth: [0.4, 0.7],  // Mid-tank (0=bottom, 1=top)
           schooling: false,
           gridProportions: {
             rows: [0.35, 0.30, 0.35],        // Tall fins top/bottom, narrow body center
@@ -301,7 +301,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           size: { width: 1.5, height: 0.9 },
           baseSpeed: 0.18,
           wanderRange: 3.0,
-          preferredDepth: [0.5, 1.5],
+          preferredDepth: [0.5, 0.8],  // Upper-mid tank
           schooling: false,
           gridProportions: {
             rows: [0.25, 0.50, 0.25],
@@ -325,7 +325,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           size: { width: 2, height: 0.6 },
           baseSpeed: 0.25,
           wanderRange: 4.0,
-          preferredDepth: [0.0, 1.0],
+          preferredDepth: [0.3, 0.6],  // Mid tank
           schooling: true,
           gridProportions: {
             rows: [0.30, 0.40, 0.30],
@@ -358,7 +358,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           size: { width: 1.2, height: 0.6 },
           baseSpeed: 0.22,
           wanderRange: 3.5,
-          preferredDepth: [-0.2, 0.8],
+          preferredDepth: [0.1, 0.2],  // Lower-mid tank
           schooling: true,
           gridProportions: {
             rows: [0.30, 0.40, 0.30],
@@ -380,7 +380,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           size: { width: 1.3, height: 0.5 },
           baseSpeed: 0.30,
           wanderRange: 4.5,
-          preferredDepth: [0.3, 1.3],
+          preferredDepth: [0.6, 0.9],  // Upper tank (surface swimmers)
           schooling: true,
           gridProportions: {
             rows: [0.20, 0.50, 0.30],
@@ -525,6 +525,7 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           baseScaleX: baseScaleX,
           baseScaleY: baseScaleY,
           // Vertical movement targets
+          preferredDepth: species.preferredDepth, // [min, max] where 0=bottom, 1=top
           targetDepth: height,
           depthChangeTime: 0,
           depthChangeDuration: 3 + Math.random() * 4, // Change depth every 3-7 seconds
@@ -584,34 +585,42 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           if (t - brain.depthChangeTime > brain.depthChangeDuration) {
             brain.depthChangeTime = t;
             brain.depthChangeDuration = 3 + Math.random() * 4;
-            // Pick a new target depth - full range from bottom to top
-            brain.targetDepth = -1.5 + Math.random() * 4.0; // -1.5 to 2.5 (full tank height)
+            // Pick a new target depth within species' preferred range
+            // preferredDepth is [min, max] where 0=bottom, 1=top
+            const minDepth = brain.preferredDepth[0];
+            const maxDepth = brain.preferredDepth[1];
+            const depthRange = maxDepth - minDepth;
+            const normalizedDepth = minDepth + Math.random() * depthRange; // 0-1 range
+            
+            // Convert to world coordinates: 0 -> -2.0 (bottom), 1 -> 2.8 (top)
+            brain.targetDepth = -2.0 + normalizedDepth * 4.8;
           }
           
           // Smoothly move toward target depth
           brain.baseY += (brain.targetDepth - brain.baseY) * 0.3 * dt;
           
-          // Natural swimming with directional movement
-          const wanderX = Math.sin(t * brain.wanderSpeed + brain.phase) * brain.wanderRange;
-          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 1.2;
-          const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3; // Reduced, since baseY now changes
-          
+          // Swim in current direction (don't turn around on screen)
           const prevX = f.position.x;
           const prevY = f.position.y;
           
-          // Swim naturally, not forced to center
-          f.position.x = brain.baseX + wanderX;
+          // Move in facing direction
+          f.position.x += brain.facingDir * brain.wanderSpeed * 2.0 * dt;
+          
+          // Add gentle vertical and depth variation
+          const wanderZ = Math.cos(t * brain.wanderSpeed * 0.7 + brain.phase) * 1.2;
+          const wanderY = Math.sin(t * brain.wanderSpeed * 0.5 + brain.phase) * 0.3;
+          
           f.position.z = brain.baseZ + wanderZ;
           f.position.y = brain.baseY + wanderY;
 
-          // Wrap around if fish goes too far horizontally
-          if (f.position.x > 7) { 
-            f.position.x = -7; 
-            brain.baseX = -5 + Math.random() * 2;
+          // When fish leaves screen, turn around off-screen
+          if (f.position.x > 8) { 
+            brain.facingDir = -1;  // Turn to face left
+            f.position.x = 8;
           }
-          if (f.position.x < -7) { 
-            f.position.x = 7; 
-            brain.baseX = 3 + Math.random() * 2;
+          if (f.position.x < -8) { 
+            brain.facingDir = 1;   // Turn to face right
+            f.position.x = -8;
           }
           
           // Keep fish within tank depth (Z axis)
@@ -626,15 +635,10 @@ import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
           const finalScaleX = brain.baseScaleX * depthScale;
           const finalScaleY = brain.baseScaleY * depthScale;
           
-          // Calculate movement direction (texture faces right, so flip logic)
+          // Calculate movement for animation
           const dx = f.position.x - prevX;
           const dy = f.position.y - prevY;
           const dz = f.position.z - (brain.prevZ || f.position.z);
-          
-          // Determine facing direction based on horizontal movement
-          if (Math.abs(dx) > 0.001) {
-            brain.facingDir = dx > 0 ? 1 : -1;
-          }
           
           // Calculate pitch (tilt up/down) based on vertical movement
           // For billboard fish, we need to rotate around Z axis
