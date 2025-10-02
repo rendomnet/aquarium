@@ -108,23 +108,45 @@ void main() {
   float gridCol1End = uGridProps[3];
   float gridCol2End = gridCol1End + uGridProps[4];
   
-  // Determine if this is tail base (col 2) or tail fin (col 1) based on position
+  // Determine which body part we're in
   float isTailBase = (vUv.x > gridCol1End && vUv.x < gridCol2End) ? 1.0 : 0.0;
   float isTailFin = (vUv.x < gridCol1End) ? 1.0 : 0.0;
+  float isFin = (vUv.y < 0.3 || vUv.y > 0.7) ? 1.0 : 0.0; // Top/bottom fins
   
-  // Tail base gets strong speed modulation, tail fin gets weak modulation
-  // Use config values for min/max ranges
-  float speedModulator = clamp(uSpeedMin + uSwimSpeed * (0.5 + isTailBase * 0.8), uSpeedMin, uSpeedMax);
+  // TAIL BASE: Frequency increases with speed (propulsion muscle beats faster)
+  // TAIL FIN: Passive, no speed modulation (just flows)
+  // FINS: No speed modulation (only respond to turning)
+  float speedModulator = 1.0;
+  if (isTailBase > 0.5) {
+    // Tail base: frequency increases significantly with speed
+    speedModulator = clamp(uSpeedMin + uSwimSpeed * 1.5, uSpeedMin, uSpeedMax);
+  } else if (isTailFin > 0.5) {
+    // Tail fin: minimal speed response (passive flow)
+    speedModulator = clamp(0.8 + uSwimSpeed * 0.3, 0.8, 1.2);
+  }
+  // Fins: speedModulator stays at 1.0 (no speed response)
+  
   float phase = uTime * finalSpeed * speedModulator + vUv.x * finalFrequency + finalPhase;
   
-  // Main tail sway - side to side (Z axis)
-  // Tail base amplitude increases with speed, tail fin stays more constant
-  float amplitudeModulator = clamp(uAmpMin + uSwimSpeed * (0.4 + isTailBase * 0.6), uAmpMin, uAmpMax);
+  // AMPLITUDE: Only tail base increases amplitude with speed
+  float amplitudeModulator = 1.0;
+  if (isTailBase > 0.5) {
+    amplitudeModulator = clamp(uAmpMin + uSwimSpeed * 1.0, uAmpMin, uAmpMax);
+  }
+  
   float sway = sin(phase) * finalAmplitude * totalFlexibility * amplitudeModulator;
   
-  // Add drag/lag effect - tail lags behind when turning
-  // The farther from the head (lower vUv.x), the more lag
-  float dragAmount = (1.0 - vUv.x) * uTurnAmount * totalFlexibility * uDragStrength;
+  // DRAG/LAG: Affects tail and fins differently
+  // Tail: lags based on distance from head
+  // Fins: respond to turning for stability
+  float dragAmount = 0.0;
+  if (isFin > 0.5) {
+    // Fins respond to turning (stabilization)
+    dragAmount = uTurnAmount * totalFlexibility * uDragStrength * 0.5;
+  } else {
+    // Tail lags behind when turning
+    dragAmount = (1.0 - vUv.x) * uTurnAmount * totalFlexibility * uDragStrength;
+  }
   sway += dragAmount;
   
   // Small vertical undulation (Y axis) - much less than horizontal
