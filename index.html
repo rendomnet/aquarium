@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Three.js Mini Marine Aquarium</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #061018;
+      }
+      canvas {
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        left: 12px;
+        top: 12px;
+        color: #d7efff;
+        font: 13px system-ui;
+      }
+      #ui label {
+        display: block;
+        margin: 6px 0 2px;
+        opacity: 0.9;
+      }
+      #ui input {
+        width: 160px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <label>Swim Speed</label
+      ><input
+        id="speed"
+        type="range"
+        min="0"
+        max="2"
+        step="0.01"
+        value="0.85"
+      />
+      <label>Tail Amplitude</label
+      ><input
+        id="amp"
+        type="range"
+        min="0"
+        max="0.5"
+        step="0.005"
+        value="0.22"
+      />
+    </div>
+
+    <script type="module" src="/src/index.mjs"></script>
+  </body>
+</html>
