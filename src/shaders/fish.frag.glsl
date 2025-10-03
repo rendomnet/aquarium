@@ -15,7 +15,8 @@ void main() {
   if (c.a < 0.08) discard;
   
   // Sample caustics based on world position (animated)
-  vec2 causticsUV = vWorldPos.xz * uCausticsScale + vec2(uTime * uCausticsDrift * 0.03, uTime * uCausticsDrift * 0.018);
+  // Use XY for vertical billboards (not XZ which is for horizontal planes)
+  vec2 causticsUV = vWorldPos.xy * uCausticsScale + vec2(uTime * uCausticsDrift * 0.03, uTime * uCausticsDrift * 0.018);
   vec4 caustics = texture2D(uCaustics, causticsUV);
   
   // Apply caustics as a subtle brightness modulation

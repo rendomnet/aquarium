@@ -38,6 +38,12 @@ const CONFIG = {
   // Fish movement bounds
   movement: {
     depthRange: [0, 2],          // Z-axis range [min, max] for fish depth (distance from camera)
+  },
+  
+  // Floor settings
+  floor: {
+    positionX: 0,                // Horizontal position (0 = center)
+    positionY: 0.0,              // Vertical position from screen bottom (0 = bottom edge, 1 = one unit up)
   }
 };
 
@@ -59,6 +65,16 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 0.5, 10);
 camera.lookAt(0, 0.5, 0);
 
+// Calculate visible screen bounds at camera's lookAt distance
+const vFOV = THREE.MathUtils.degToRad(camera.fov);
+const distance = 10; // Distance from camera to scene center (camera.position.z)
+const visibleHeight = 2 * Math.tan(vFOV / 2) * distance;
+const visibleWidth = visibleHeight * camera.aspect;
+const screenBottom = camera.position.y - visibleHeight / 2; // Bottom edge of visible screen
+const screenTop = camera.position.y + visibleHeight / 2;    // Top edge of visible screen
+
+console.log("Screen bounds - Bottom:", screenBottom, "Top:", screenTop, "Height:", visibleHeight);
+
 // ---------- lights ----------
 scene.add(new THREE.AmbientLight(0x79a8ff, CONFIG.scene.ambientLight));
 const key = new THREE.DirectionalLight(0x9ad1ff, CONFIG.scene.directionalLight);
@@ -79,6 +95,23 @@ const floorTex = loader.load(
     // For billboard sprite, just use the image once (no tiling)
     texture.repeat.set(1, 1);
     texture.needsUpdate = true;
+    
+    // Resize floor geometry to match image aspect ratio
+    const imgAspect = texture.image.width / texture.image.height;
+    const desiredWidth = visibleWidth; // Always match screen width
+    const desiredHeight = desiredWidth / imgAspect; // Maintain aspect ratio
+    
+    // Update floor geometry
+    floorGeo.dispose(); // Clean up old geometry
+    floorGeo = new THREE.PlaneGeometry(desiredWidth, desiredHeight);
+    floor.geometry = floorGeo;
+    
+    // Update floor position (align bottom edge to screen bottom + offset)
+    const floorBottomY = screenBottom + CONFIG.floor.positionY;
+    floor.position.set(CONFIG.floor.positionX, floorBottomY + desiredHeight / 2, 0);
+    
+    console.log("Floor resized to:", desiredWidth, "x", desiredHeight, "aspect:", imgAspect);
+    console.log("Floor bottom edge at Y:", floorBottomY, "(screen bottom:", screenBottom, "+ offset:", CONFIG.floor.positionY, ")");
   },
   undefined,
   (error) => {
@@ -127,7 +160,8 @@ const fishMat = new THREE.ShaderMaterial({
 });
 
 // ---------- floor (billboard sprite) ----------
-const floorGeo = new THREE.PlaneGeometry(20, 5); // Wide and short for floor perspective
+// Will be resized based on actual image aspect ratio
+let floorGeo = new THREE.PlaneGeometry(20, 5); // Initial size, will update
 const floorMat = new THREE.ShaderMaterial({
   uniforms: {
     uFloorTex: { value: floorTex },
@@ -145,7 +179,8 @@ const floorMat = new THREE.ShaderMaterial({
 });
 
 const floor = new THREE.Mesh(floorGeo, floorMat);
-floor.position.set(0, -2.0, 0); // Bottom of tank, facing camera
+// Initial position (will be updated when texture loads to align bottom edge)
+floor.position.set(CONFIG.floor.positionX, CONFIG.floor.positionY, 0);
 // No rotation - it's a billboard facing the camera
 scene.add(floor);
 
