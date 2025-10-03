@@ -44,6 +44,8 @@ const CONFIG = {
   floor: {
     positionX: 0,                // Horizontal position (0 = center)
     positionY: 0.0,              // Vertical position from screen bottom (0 = bottom edge, 1 = one unit up)
+    waveIntensity: 1.0,          // Wave distortion intensity (0 = flat, 1 = normal, 2 = strong)
+    waveFrequency: 20.0,         // Wave frequency (higher = shorter/tighter waves, lower = longer waves)
   },
   
   // Bubble system settings
@@ -110,9 +112,9 @@ const floorTex = loader.load(
     const desiredWidth = visibleWidth; // Always match screen width
     const desiredHeight = desiredWidth / imgAspect; // Maintain aspect ratio
     
-    // Update floor geometry
+    // Update floor geometry with segments for wave deformation
     floorGeo.dispose(); // Clean up old geometry
-    floorGeo = new THREE.PlaneGeometry(desiredWidth, desiredHeight);
+    floorGeo = new THREE.PlaneGeometry(desiredWidth, desiredHeight, 32, 16); // Keep segments
     floor.geometry = floorGeo;
     
     // Update floor position (align bottom edge to screen bottom + offset)
@@ -170,7 +172,8 @@ const fishMat = new THREE.ShaderMaterial({
 
 // ---------- floor (billboard sprite) ----------
 // Will be resized based on actual image aspect ratio
-let floorGeo = new THREE.PlaneGeometry(20, 5); // Initial size, will update
+// Use more segments for smooth wave deformation
+let floorGeo = new THREE.PlaneGeometry(20, 5, 32, 16); // 32x16 segments for waves
 const floorMat = new THREE.ShaderMaterial({
   uniforms: {
     uFloorTex: { value: floorTex },
@@ -179,6 +182,8 @@ const floorMat = new THREE.ShaderMaterial({
     uCausticsScale: { value: CONFIG.caustics.scale },
     uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
     uCausticsIntensity: { value: 0.3 }, // Subtle caustics on floor
+    uWaveIntensity: { value: CONFIG.floor.waveIntensity },
+    uWaveFrequency: { value: CONFIG.floor.waveFrequency },
   },
   vertexShader: floorVertexShader,
   fragmentShader: floorFragmentShader,
