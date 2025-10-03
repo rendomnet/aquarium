@@ -44,6 +44,14 @@ const CONFIG = {
   floor: {
     positionX: 0,                // Horizontal position (0 = center)
     positionY: 0.0,              // Vertical position from screen bottom (0 = bottom edge, 1 = one unit up)
+  },
+  
+  // Bubble system settings
+  bubbles: {
+    count: 40,                   // Number of bubbles
+    emitterX: 80,                // Horizontal position (0-100%, 0=left, 100=right)
+    emitterY: 5,                 // Vertical position (0-100%, 0=bottom, 100=top)
+    emitterWidth: 0.15,          // Width of emitter (spread of bubbles)
   }
 };
 
@@ -624,9 +632,15 @@ POPULATION.forEach((speciesName) => {
 
 // ---------- bubble stream ----------
 const bubbles = [];
-const BUBBLE_COUNT = 40; // More bubbles for dense stream
-const BUBBLE_SOURCE_X = 6.5; // Fixed X position (right side)
-const BUBBLE_SOURCE_Y = -2.0; // Bottom of tank
+
+// Calculate bubble emitter position from screen percentages
+const screenLeft = -visibleWidth / 2;
+const screenRight = visibleWidth / 2;
+const BUBBLE_SOURCE_X = screenLeft + (visibleWidth * CONFIG.bubbles.emitterX / 100);
+const BUBBLE_SOURCE_Y = screenBottom + (visibleHeight * CONFIG.bubbles.emitterY / 100);
+
+console.log("Bubble emitter at:", BUBBLE_SOURCE_X, BUBBLE_SOURCE_Y, 
+            `(${CONFIG.bubbles.emitterX}%, ${CONFIG.bubbles.emitterY}%)`);
 
 function createBubble() {
   const size = 0.05 + Math.random() * 0.08; // Smaller bubbles: 0.05 to 0.13
@@ -640,8 +654,8 @@ function createBubble() {
   
   const bubble = new THREE.Mesh(geometry, material);
   
-  // Start position: narrow stream at bottom
-  bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * 0.15; // Very narrow: ±0.075
+  // Start position: narrow stream at emitter
+  bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * CONFIG.bubbles.emitterWidth;
   bubble.position.y = BUBBLE_SOURCE_Y;
   bubble.position.z = 0.5 + Math.random() * 0.5; // Shallow depth: 0.5 to 1.0
   
@@ -660,7 +674,7 @@ function createBubble() {
 }
 
 // Create initial bubbles
-for (let i = 0; i < BUBBLE_COUNT; i++) {
+for (let i = 0; i < CONFIG.bubbles.count; i++) {
   const bubble = createBubble();
   // Distribute along the rise path
   bubble.position.y = BUBBLE_SOURCE_Y + Math.random() * 5;
@@ -696,10 +710,10 @@ function tick() {
     const scale = 1 + heightRatio * 0.3; // Grow up to 30% larger
     bubble.scale.set(scale, scale, 1);
     
-    // Reset when bubble reaches top
-    if (bubble.position.y > 2.8) {
+    // Reset when bubble reaches top of screen
+    if (bubble.position.y > screenTop) {
       bubble.position.y = BUBBLE_SOURCE_Y;
-      bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * 0.15;
+      bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * CONFIG.bubbles.emitterWidth;
       bubble.position.z = 0.5 + Math.random() * 0.5;
       data.startX = bubble.position.x;
       bubble.scale.set(1, 1, 1);
@@ -787,24 +801,33 @@ function tick() {
     
     // Calculate pitch (tilt up/down) based on vertical movement
     // For billboard fish, we need to rotate around Z axis
-    const verticalSpeed = dy;
-    const horizontalSpeed = Math.sqrt(dx * dx + dz * dz);
+    const verticalSpeed = dy / dt; // Convert to velocity
+    const horizontalSpeed = Math.sqrt(dx * dx + dz * dz) / dt;
     
     brain.smoothPitch = brain.smoothPitch || 0;
     
     // Calculate angle: positive dy (up) should tilt head up, negative dy (down) should tilt head down
-    // The sign depends on which way the fish is facing
     let targetPitch = 0;
-    if (horizontalSpeed > 0.001 || Math.abs(verticalSpeed) > 0.001) {
-      // atan2 gives us the angle of movement
-      targetPitch = Math.atan2(verticalSpeed, horizontalSpeed) * 0.6;
+    
+    // Deadzone to prevent jittering when fish is barely moving
+    const minSpeed = 0.05; // Minimum speed threshold
+    const totalSpeed = Math.sqrt(verticalSpeed * verticalSpeed + horizontalSpeed * horizontalSpeed);
+    
+    if (totalSpeed > minSpeed) {
+      // Only calculate pitch if fish is moving significantly
+      targetPitch = Math.atan2(verticalSpeed, horizontalSpeed) * 0.5; // Reduced from 0.6
+      
       // If fish is facing left (flipped), we need to flip the rotation
       if (brain.facingDir < 0) {
         targetPitch = -targetPitch;
       }
+      
+      // Clamp pitch to prevent extreme angles
+      targetPitch = Math.max(-0.3, Math.min(0.3, targetPitch));
     }
     
-    brain.smoothPitch = brain.smoothPitch * 0.85 + targetPitch * 0.15;
+    // Stronger smoothing to reduce jitter
+    brain.smoothPitch = brain.smoothPitch * 0.92 + targetPitch * 0.08; // Increased from 0.85/0.15
     
     // Apply rotation: Z axis for billboard tilt up/down
     f.rotation.set(0, 0, brain.smoothPitch);
