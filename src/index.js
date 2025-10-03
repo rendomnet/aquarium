@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { GUI } from "lil-gui";
 import fishVertexShader from "./shaders/fish.vert.glsl?raw";
 import fishFragmentShader from "./shaders/fish.frag.glsl?raw";
+import floorVertexShader from "./shaders/floor.vert.glsl?raw";
+import floorFragmentShader from "./shaders/floor.frag.glsl?raw";
 
 // ========== AQUARIUM CONFIGURATION ==========
 // Adjust these values to customize the aquarium appearance and behavior
@@ -69,6 +71,23 @@ const causticsTex = loader.load("/images/caustics.jpg");
 causticsTex.wrapS = causticsTex.wrapT = THREE.RepeatWrapping;
 causticsTex.repeat.set(6, 6);
 
+const bubbleTex = loader.load("/images/bubble.png");
+const floorTex = loader.load(
+  "/images/floor1.webp",
+  (texture) => {
+    console.log("Floor texture loaded:", texture.image.width, "x", texture.image.height);
+    // For billboard sprite, just use the image once (no tiling)
+    texture.repeat.set(1, 1);
+    texture.needsUpdate = true;
+  },
+  undefined,
+  (error) => {
+    console.error("Error loading floor texture:", error);
+  }
+);
+// No wrapping needed for single sprite
+floorTex.wrapS = floorTex.wrapT = THREE.ClampToEdgeWrapping;
+
 // ---------- fish shader (plane + sine tail) ----------
 const FISH_SEG_X = 64,
   FISH_SEG_Y = 12;
@@ -107,6 +126,28 @@ const fishMat = new THREE.ShaderMaterial({
   side: THREE.DoubleSide,
 });
 
+// ---------- floor (billboard sprite) ----------
+const floorGeo = new THREE.PlaneGeometry(20, 5); // Wide and short for floor perspective
+const floorMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uFloorTex: { value: floorTex },
+    uCaustics: { value: causticsTex },
+    uTime: { value: 0 },
+    uCausticsScale: { value: CONFIG.caustics.scale },
+    uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
+    uCausticsIntensity: { value: 0.3 }, // Subtle caustics on floor
+  },
+  vertexShader: floorVertexShader,
+  fragmentShader: floorFragmentShader,
+  transparent: true,  // Enable transparency for WebP alpha
+  depthWrite: false,  // Don't write to depth buffer for transparency
+  side: THREE.DoubleSide,
+});
+
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.position.set(0, -2.0, 0); // Bottom of tank, facing camera
+// No rotation - it's a billboard facing the camera
+scene.add(floor);
 
 // ---------- school of fish ----------
 const UI = {
@@ -546,6 +587,51 @@ POPULATION.forEach((speciesName) => {
   fishes.push(f);
 });
 
+// ---------- bubble stream ----------
+const bubbles = [];
+const BUBBLE_COUNT = 40; // More bubbles for dense stream
+const BUBBLE_SOURCE_X = 6.5; // Fixed X position (right side)
+const BUBBLE_SOURCE_Y = -2.0; // Bottom of tank
+
+function createBubble() {
+  const size = 0.05 + Math.random() * 0.08; // Smaller bubbles: 0.05 to 0.13
+  const geometry = new THREE.PlaneGeometry(size, size);
+  const material = new THREE.MeshBasicMaterial({
+    map: bubbleTex,
+    transparent: true,
+    opacity: 0.7 + Math.random() * 0.2, // 0.7 to 0.9
+    depthWrite: false,
+  });
+  
+  const bubble = new THREE.Mesh(geometry, material);
+  
+  // Start position: narrow stream at bottom
+  bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * 0.15; // Very narrow: ±0.075
+  bubble.position.y = BUBBLE_SOURCE_Y;
+  bubble.position.z = 0.5 + Math.random() * 0.5; // Shallow depth: 0.5 to 1.0
+  
+  // Bubble properties
+  bubble.userData = {
+    riseSpeed: 0.8 + Math.random() * 0.6, // Faster: 0.8 to 1.4
+    wobbleSpeed: 2 + Math.random() * 3, // Faster wobble
+    wobbleAmount: 0.05 + Math.random() * 0.08, // Subtle wobble: 0.05 to 0.13
+    phase: Math.random() * Math.PI * 2,
+    startX: bubble.position.x,
+    startDelay: Math.random() * 2, // Stagger spawning
+  };
+  
+  scene.add(bubble);
+  return bubble;
+}
+
+// Create initial bubbles
+for (let i = 0; i < BUBBLE_COUNT; i++) {
+  const bubble = createBubble();
+  // Distribute along the rise path
+  bubble.position.y = BUBBLE_SOURCE_Y + Math.random() * 5;
+  bubbles.push(bubble);
+}
+
 // ---------- animate ----------
 const clock = new THREE.Clock();
 function tick() {
@@ -555,6 +641,35 @@ function tick() {
   // caustics drift
   causticsTex.offset.x = (t * 0.03) % 1;
   causticsTex.offset.y = (t * 0.018) % 1;
+
+  // update floor time
+  floorMat.uniforms.uTime.value = t;
+
+  // animate bubbles
+  bubbles.forEach((bubble) => {
+    const data = bubble.userData;
+    
+    // Rise upward quickly
+    bubble.position.y += data.riseSpeed * dt;
+    
+    // Subtle wobble side to side
+    const wobble = Math.sin(t * data.wobbleSpeed + data.phase) * data.wobbleAmount;
+    bubble.position.x = data.startX + wobble;
+    
+    // Slight expansion as bubble rises (buoyancy effect)
+    const heightRatio = (bubble.position.y - BUBBLE_SOURCE_Y) / 5;
+    const scale = 1 + heightRatio * 0.3; // Grow up to 30% larger
+    bubble.scale.set(scale, scale, 1);
+    
+    // Reset when bubble reaches top
+    if (bubble.position.y > 2.8) {
+      bubble.position.y = BUBBLE_SOURCE_Y;
+      bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * 0.15;
+      bubble.position.z = 0.5 + Math.random() * 0.5;
+      data.startX = bubble.position.x;
+      bubble.scale.set(1, 1, 1);
+    }
+  });
 
   // gentle aquarium swimming
   fishes.forEach((f, i) => {
