@@ -14,6 +14,7 @@ const CONFIG = {
     fishBaseLight: 0.85,          // Base lighting on fish (0.8 = darker, 1.0 = no darkening)
     scale: 0.15,                  // Caustics pattern scale on fish (smaller = tighter pattern)
     driftSpeed: 0.7,              // Caustics animation speed (1.0 = normal, 0.5 = slower)
+    distortionAmount: 0.05,       // Caustics wave distortion amount (0 = no distortion, 0.05 = strong)
   },
   
   // Fish animation settings
@@ -34,7 +35,7 @@ const CONFIG = {
     ambientLight: 0.55,           // Ambient light intensity
     directionalLight: 0.7,        // Directional light intensity
     depthBlur: 2.0,               // Depth-based blur intensity (0 = no blur, 5 = strong blur)
-    maxBlur: 1.0,                 // Maximum blur for fish at depthRange[0] (far end)
+    maxBlur: 0.5,                 // Maximum blur for fish at depthRange[0] (far end)
   },
   
   // Fish movement bounds
@@ -188,6 +189,7 @@ const floorMat = new THREE.ShaderMaterial({
     uCausticsScale: { value: CONFIG.caustics.scale },
     uCausticsDrift: { value: CONFIG.caustics.driftSpeed },
     uCausticsIntensity: { value: 0.3 }, // Subtle caustics on floor
+    uCausticsDistortion: { value: CONFIG.caustics.distortionAmount },
     uWaveIntensity: { value: CONFIG.floor.waveIntensity },
     uWaveFrequency: { value: CONFIG.floor.waveFrequency },
   },
