@@ -99,13 +99,14 @@ scene.add(key);
 
 // ---------- textures ----------
 const loader = new THREE.TextureLoader();
-const causticsTex = loader.load("/images/caustics.jpg");
+const BASE_URL = import.meta.env.BASE_URL;
+const causticsTex = loader.load(BASE_URL + "images/caustics.jpg");
 causticsTex.wrapS = causticsTex.wrapT = THREE.RepeatWrapping;
 causticsTex.repeat.set(6, 6);
 
-const bubbleTex = loader.load("/images/bubble.png");
+const bubbleTex = loader.load(BASE_URL + "images/bubble.png");
 const floorTex = loader.load(
-  "/images/floor1.webp",
+  BASE_URL + "images/floor1.webp",
   (texture) => {
     console.log("Floor texture loaded:", texture.image.width, "x", texture.image.height);
     // For billboard sprite, just use the image once (no tiling)
@@ -233,7 +234,7 @@ function definePart({
 // Fish species definitions
 const FISH_SPECIES = {
   angelfish: {
-    texture: '/images/fish/angelfish.webp',
+    texture: BASE_URL + 'images/fish/angelfish.webp',
     size: { width: 2.2, height: 2.2 },
     baseSpeed: 0.05,
     wanderRange: 1.5,
@@ -297,7 +298,7 @@ const FISH_SPECIES = {
     }
   },
   discus: {
-    texture: '/images/fish/discus.webp',
+    texture: BASE_URL + 'images/fish/discus.webp',
     size: { width: 1.8, height: 1.8 },
     baseSpeed: 0.1,
     wanderRange: 2.8,
@@ -359,7 +360,7 @@ const FISH_SPECIES = {
     }
   },
   gourami: {
-    texture: '/images/fish/gourami.webp',
+    texture: BASE_URL + 'images/fish/gourami.webp',
     size: { width: 1.5, height: 0.9 },
     baseSpeed: 0.45,
     wanderRange: 3.0,
@@ -383,7 +384,7 @@ const FISH_SPECIES = {
     }
   },
   swordtail: {
-    texture: '/images/fish/swordtail.webp',
+    texture: BASE_URL + 'images/fish/swordtail.webp',
     size: { width: 2, height: 0.6 },
     baseSpeed: 0.25,
     wanderRange: 4.0,
@@ -416,7 +417,7 @@ const FISH_SPECIES = {
     }
   },
   platy: {
-    texture: '/images/fish/platy.webp',
+    texture: BASE_URL + 'images/fish/platy.webp',
     size: { width: 1, height: 0.5 },
     baseSpeed: 0.22,
     wanderRange: 3.5,
@@ -471,7 +472,7 @@ const FISH_SPECIES = {
     }
   },
   guppy: {
-    texture: '/images/fish/guppy.webp',
+    texture: BASE_URL + 'images/fish/guppy.webp',
     size: { width: 1, height: 0.4 },
     baseSpeed: 0.4,
     wanderRange: 4.5,
