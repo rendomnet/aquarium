@@ -49,9 +49,10 @@ const CONFIG = {
   // Bubble system settings
   bubbles: {
     count: 40,                   // Number of bubbles
-    emitterX: 80,                // Horizontal position (0-100%, 0=left, 100=right)
-    emitterY: 5,                 // Vertical position (0-100%, 0=bottom, 100=top)
+    emitterX: 85,                // Horizontal position (0-100%, 0=left, 100=right)
+    emitterY: 10,                 // Vertical position (0-100%, 0=bottom, 100=top)
     emitterWidth: 0.15,          // Width of emitter (spread of bubbles)
+    depthRange: [-0.5, 0],      // Z-depth range [min, max] for bubbles
   }
 };
 
@@ -116,7 +117,7 @@ const floorTex = loader.load(
     
     // Update floor position (align bottom edge to screen bottom + offset)
     const floorBottomY = screenBottom + CONFIG.floor.positionY;
-    floor.position.set(CONFIG.floor.positionX, floorBottomY + desiredHeight / 2, 0);
+    floor.position.set(CONFIG.floor.positionX, floorBottomY + desiredHeight / 2, 0); // Always at Z=0
     
     console.log("Floor resized to:", desiredWidth, "x", desiredHeight, "aspect:", imgAspect);
     console.log("Floor bottom edge at Y:", floorBottomY, "(screen bottom:", screenBottom, "+ offset:", CONFIG.floor.positionY, ")");
@@ -188,7 +189,7 @@ const floorMat = new THREE.ShaderMaterial({
 
 const floor = new THREE.Mesh(floorGeo, floorMat);
 // Initial position (will be updated when texture loads to align bottom edge)
-floor.position.set(CONFIG.floor.positionX, CONFIG.floor.positionY, 0);
+floor.position.set(CONFIG.floor.positionX, CONFIG.floor.positionY, 0); // Always at Z=0
 // No rotation - it's a billboard facing the camera
 scene.add(floor);
 
@@ -657,7 +658,9 @@ function createBubble() {
   // Start position: narrow stream at emitter
   bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * CONFIG.bubbles.emitterWidth;
   bubble.position.y = BUBBLE_SOURCE_Y;
-  bubble.position.z = 0.5 + Math.random() * 0.5; // Shallow depth: 0.5 to 1.0
+  const depthMin = CONFIG.bubbles.depthRange[0];
+  const depthMax = CONFIG.bubbles.depthRange[1];
+  bubble.position.z = depthMin + Math.random() * (depthMax - depthMin);
   
   // Bubble properties
   bubble.userData = {
@@ -714,7 +717,9 @@ function tick() {
     if (bubble.position.y > screenTop) {
       bubble.position.y = BUBBLE_SOURCE_Y;
       bubble.position.x = BUBBLE_SOURCE_X + (Math.random() - 0.5) * CONFIG.bubbles.emitterWidth;
-      bubble.position.z = 0.5 + Math.random() * 0.5;
+      const depthMin = CONFIG.bubbles.depthRange[0];
+      const depthMax = CONFIG.bubbles.depthRange[1];
+      bubble.position.z = depthMin + Math.random() * (depthMax - depthMin);
       data.startX = bubble.position.x;
       bubble.scale.set(1, 1, 1);
     }
