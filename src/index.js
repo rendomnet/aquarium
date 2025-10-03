@@ -44,7 +44,7 @@ const CONFIG = {
   floor: {
     positionX: 0,                // Horizontal position (0 = center)
     positionY: 0.0,              // Vertical position from screen bottom (0 = bottom edge, 1 = one unit up)
-    waveIntensity: 1.0,          // Wave distortion intensity (0 = flat, 1 = normal, 2 = strong)
+    waveIntensity: 0,          // Wave distortion intensity (0 = flat, 1 = normal, 2 = strong)
     waveFrequency: 20.0,         // Wave frequency (higher = shorter/tighter waves, lower = longer waves)
   },
   
@@ -639,11 +639,11 @@ POPULATION.forEach((speciesName) => {
 // ---------- bubble stream ----------
 const bubbles = [];
 
-// Calculate bubble emitter position from screen percentages
-const screenLeft = -visibleWidth / 2;
-const screenRight = visibleWidth / 2;
-const BUBBLE_SOURCE_X = screenLeft + (visibleWidth * CONFIG.bubbles.emitterX / 100);
-const BUBBLE_SOURCE_Y = screenBottom + (visibleHeight * CONFIG.bubbles.emitterY / 100);
+// Calculate bubble emitter position from screen percentages (will be updated on resize)
+let screenLeft = -visibleWidth / 2;
+let screenRight = visibleWidth / 2;
+let BUBBLE_SOURCE_X = screenLeft + (visibleWidth * CONFIG.bubbles.emitterX / 100);
+let BUBBLE_SOURCE_Y = screenBottom + (visibleHeight * CONFIG.bubbles.emitterY / 100);
 
 console.log("Bubble emitter at:", BUBBLE_SOURCE_X, BUBBLE_SOURCE_Y, 
             `(${CONFIG.bubbles.emitterX}%, ${CONFIG.bubbles.emitterY}%)`);
@@ -893,8 +893,54 @@ function tick() {
   requestAnimationFrame(tick);
 }
 tick();
+
+// ---------- resize handler ----------
 addEventListener("resize", () => {
+  // Update camera
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  
+  // Recalculate screen bounds
+  const vFOV = THREE.MathUtils.degToRad(camera.fov);
+  const distance = 10;
+  const newVisibleHeight = 2 * Math.tan(vFOV / 2) * distance;
+  const newVisibleWidth = newVisibleHeight * camera.aspect;
+  const newScreenBottom = camera.position.y - newVisibleHeight / 2;
+  const newScreenTop = camera.position.y + newVisibleHeight / 2;
+  
+  // Update floor size and position
+  if (floorTex.image) {
+    const imgAspect = floorTex.image.width / floorTex.image.height;
+    const desiredWidth = newVisibleWidth;
+    const desiredHeight = desiredWidth / imgAspect;
+    
+    floorGeo.dispose();
+    floorGeo = new THREE.PlaneGeometry(desiredWidth, desiredHeight, 32, 16);
+    floor.geometry = floorGeo;
+    
+    const floorBottomY = newScreenBottom + CONFIG.floor.positionY;
+    floor.position.set(CONFIG.floor.positionX, floorBottomY + desiredHeight / 2, 0);
+  }
+  
+  // Update bubble emitter position
+  screenLeft = -newVisibleWidth / 2;
+  screenRight = newVisibleWidth / 2;
+  const BUBBLE_SOURCE_X_NEW = screenLeft + (newVisibleWidth * CONFIG.bubbles.emitterX / 100);
+  const BUBBLE_SOURCE_Y_NEW = newScreenBottom + (newVisibleHeight * CONFIG.bubbles.emitterY / 100);
+  
+  // Update all bubble positions to new emitter location
+  bubbles.forEach((bubble) => {
+    const offsetX = bubble.position.x - BUBBLE_SOURCE_X;
+    const offsetY = bubble.position.y - BUBBLE_SOURCE_Y;
+    bubble.position.x = BUBBLE_SOURCE_X_NEW + offsetX;
+    bubble.position.y = BUBBLE_SOURCE_Y_NEW + offsetY;
+    bubble.userData.startX = BUBBLE_SOURCE_X_NEW + (Math.random() - 0.5) * CONFIG.bubbles.emitterWidth;
+  });
+  
+  // Update global bubble source variables
+  BUBBLE_SOURCE_X = BUBBLE_SOURCE_X_NEW;
+  BUBBLE_SOURCE_Y = BUBBLE_SOURCE_Y_NEW;
+  
+  console.log("Resized - Screen:", newVisibleWidth, "x", newVisibleHeight);
 });
