@@ -12,6 +12,7 @@ attribute float instanceStartX;
 
 varying float vOpacity;
 varying float vScale;
+varying vec2 vUv;
 
 void main() {
     float totalHeight = uScreenTop - uEmitterY;
@@ -40,5 +41,6 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(newPosition, 1.0);
     mvPosition.xy += position.xy * vScale; // Apply billboard scaling
     
+    vUv = uv;
     gl_Position = projectionMatrix * mvPosition;
 }

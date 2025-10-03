@@ -60,6 +60,11 @@ const CONFIG = {
     emitterY: 10,                 // Vertical position (0-100%, 0=bottom, 100=top)
     emitterWidth: 0.15,          // Width of emitter (spread of bubbles)
     depthRange: [-0.5, 0],      // Z-depth range [min, max] for bubbles
+    size: {
+      quad: 0.17,                // Base quad width/height for each bubble sprite
+      base: 0.15,                // Base per-instance scale multiplier
+      range: 0.2,               // Additional random scale amount (0..range)
+    },
   }
 };
 
@@ -633,7 +638,8 @@ let screenLeft = -visibleWidth / 2;
 let BUBBLE_SOURCE_X = screenLeft + (visibleWidth * CONFIG.bubbles.emitterX / 100);
 let BUBBLE_SOURCE_Y = screenBottom + (visibleHeight * CONFIG.bubbles.emitterY / 100);
 
-const bubbleGeo = new THREE.PlaneGeometry(0.1, 0.1);
+const bubbleSize = CONFIG.bubbles.size;
+const bubbleGeo = new THREE.PlaneGeometry(bubbleSize.quad, bubbleSize.quad);
 const bubbleMat = new THREE.ShaderMaterial({
   uniforms: {
     uBubbleTex: { value: bubbleTex },
@@ -664,7 +670,7 @@ for (let i = 0; i < CONFIG.bubbles.count; i++) {
   const z = depthMin + Math.random() * (depthMax - depthMin);
   instancePositions.set([0, 0, z], i * 3);
 
-  instanceScales[i] = 0.05 + Math.random() * 0.08;
+  instanceScales[i] = bubbleSize.base + Math.random() * bubbleSize.range;
   instanceRiseSpeeds[i] = 0.8 + Math.random() * 0.6;
   instanceWobbleSpeeds[i] = 2 + Math.random() * 3;
   instanceWobbleAmounts[i] = 0.05 + Math.random() * 0.08;

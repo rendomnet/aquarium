@@ -1,9 +1,10 @@
 uniform sampler2D uBubbleTex;
 varying float vOpacity;
+varying vec2 vUv;
 
 void main() {
-    // Use texture2D with gl_PointCoord for circular sprites
-    vec4 texColor = texture2D(uBubbleTex, gl_PointCoord);
+    // Sample bubble texture using quad UVs
+    vec4 texColor = texture2D(uBubbleTex, vUv);
     
     // Discard transparent pixels to avoid rendering artifacts
     if (texColor.a < 0.1) {
