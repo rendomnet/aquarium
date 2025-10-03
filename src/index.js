@@ -514,6 +514,7 @@ Object.keys(FISH_SPECIES).forEach(species => {
 
 const fishes = [];
 const fishMeshes = {};
+const fishMeshList = [];
 
 const populationBySpecies = POPULATION.reduce((acc, speciesName) => {
   if (!acc[speciesName]) {
@@ -593,6 +594,7 @@ Object.keys(populationBySpecies).forEach(speciesName => {
   const mesh = new THREE.InstancedMesh(fishGeo, mat, count);
   scene.add(mesh);
   fishMeshes[speciesName] = mesh;
+  fishMeshList.push(mesh);
 
   for (let i = 0; i < count; i++) {
     const facingDir = Math.random() < 0.5 ? 1 : -1;
@@ -690,6 +692,9 @@ bubbles.geometry.setAttribute('instanceStartX', new THREE.InstancedBufferAttribu
 // ---------- animate ----------
 const clock = new THREE.Clock();
 const matrix = new THREE.Matrix4();
+const tempEuler = new THREE.Euler();
+const tempQuaternion = new THREE.Quaternion();
+const tempScale = new THREE.Vector3();
 function tick() {
   const dt = clock.getDelta();
   const t = clock.elapsedTime;
@@ -806,11 +811,11 @@ function tick() {
     brain.smoothTurn = brain.smoothTurn * CONFIG.animation.smoothingTurn + dirChange * (1.0 - CONFIG.animation.smoothingTurn);
     brain.prevDir = currentDir;
     
-    matrix.compose(
-      brain.position,
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, brain.smoothPitch)),
-      new THREE.Vector3(finalScaleX * brain.facingDir, finalScaleY, 1)
-    );
+    tempEuler.set(0, 0, brain.smoothPitch);
+    tempQuaternion.setFromEuler(tempEuler);
+    tempScale.set(finalScaleX * brain.facingDir, finalScaleY, 1);
+
+    matrix.compose(brain.position, tempQuaternion, tempScale);
     brain.mesh.setMatrixAt(brain.instanceId, matrix);
 
     brain.material.uniforms.uTime.value = t;
@@ -818,7 +823,7 @@ function tick() {
     brain.material.uniforms.uTurnAmount.value = brain.smoothTurn;
   });
 
-  Object.values(fishMeshes).forEach(mesh => {
+  fishMeshList.forEach(mesh => {
     mesh.instanceMatrix.needsUpdate = true;
   });
 
