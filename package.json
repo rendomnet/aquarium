@@ -1,13 +1,15 @@
 {
   "name": "aquarium",
   "version": "1.0.0",
-  "description": "",
+  "description": "Interactive 3D aquarium with animated fish",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["aquarium", "three.js", "webgl", "animation"],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.10.0",
