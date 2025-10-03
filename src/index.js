@@ -47,8 +47,10 @@ const CONFIG = {
   floor: {
     positionX: 0,                // Horizontal position (0 = center)
     positionY: 0.0,              // Vertical position from screen bottom (0 = bottom edge, 1 = one unit up)
-    waveIntensity: 0,          // Wave distortion intensity (0 = flat, 1 = normal, 2 = strong)
-    waveFrequency: 20.0,         // Wave frequency (higher = shorter/tighter waves, lower = longer waves)
+    waveIntensity: 0,            // Wave distortion intensity (0 = flat, 1 = normal, 2 = strong)
+    waveFrequency: 0.0,          // Wave frequency (higher = shorter/tighter waves, lower = longer waves)
+    tintAmount: 0.2,             // How much to tint the floor (0 = no tint, 1 = full tint)
+    tintColor: 0x0b2233,         // Color to tint the floor with (matches scene fog color)
   },
   
   // Bubble system settings
@@ -192,6 +194,8 @@ const floorMat = new THREE.ShaderMaterial({
     uCausticsDistortion: { value: CONFIG.caustics.distortionAmount },
     uWaveIntensity: { value: CONFIG.floor.waveIntensity },
     uWaveFrequency: { value: CONFIG.floor.waveFrequency },
+    uTintAmount: { value: CONFIG.floor.tintAmount },
+    uTintColor: { value: new THREE.Color(CONFIG.floor.tintColor) },
   },
   vertexShader: floorVertexShader,
   fragmentShader: floorFragmentShader,
@@ -229,7 +233,7 @@ function definePart({
 // Fish species definitions
 const FISH_SPECIES = {
   angelfish: {
-    texture: '/images/fish/angelfish.png',
+    texture: '/images/fish/angelfish.webp',
     size: { width: 2.2, height: 2.2 },
     baseSpeed: 0.05,
     wanderRange: 1.5,
@@ -293,7 +297,7 @@ const FISH_SPECIES = {
     }
   },
   discus: {
-    texture: '/images/fish/discus.png',
+    texture: '/images/fish/discus.webp',
     size: { width: 1.8, height: 1.8 },
     baseSpeed: 0.1,
     wanderRange: 2.8,
@@ -355,7 +359,7 @@ const FISH_SPECIES = {
     }
   },
   gourami: {
-    texture: '/images/fish/gourami.png',
+    texture: '/images/fish/gourami.webp',
     size: { width: 1.5, height: 0.9 },
     baseSpeed: 0.45,
     wanderRange: 3.0,
@@ -379,7 +383,7 @@ const FISH_SPECIES = {
     }
   },
   swordtail: {
-    texture: '/images/fish/swordtail.png',
+    texture: '/images/fish/swordtail.webp',
     size: { width: 2, height: 0.6 },
     baseSpeed: 0.25,
     wanderRange: 4.0,
@@ -412,7 +416,7 @@ const FISH_SPECIES = {
     }
   },
   platy: {
-    texture: '/images/fish/platy.png',
+    texture: '/images/fish/platy.webp',
     size: { width: 1, height: 0.5 },
     baseSpeed: 0.22,
     wanderRange: 3.5,
@@ -467,7 +471,7 @@ const FISH_SPECIES = {
     }
   },
   guppy: {
-    texture: '/images/fish/guppy.png',
+    texture: '/images/fish/guppy.webp',
     size: { width: 1, height: 0.4 },
     baseSpeed: 0.4,
     wanderRange: 4.5,
@@ -662,8 +666,10 @@ function createBubble() {
   const material = new THREE.MeshBasicMaterial({
     map: bubbleTex,
     transparent: true,
-    opacity: 0.7 + Math.random() * 0.2, // 0.7 to 0.9
+    opacity: 0.5 + Math.random() * 0.3, // 0.5 to 0.8 (more transparent)
     depthWrite: false,
+    alphaTest: 0.1, // Discard very transparent pixels
+    side: THREE.DoubleSide,
   });
   
   const bubble = new THREE.Mesh(geometry, material);

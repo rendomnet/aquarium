@@ -6,12 +6,17 @@ uniform float uCausticsDrift;
 uniform float uCausticsIntensity;
 uniform float uCausticsDistortion;
 uniform float uWaveFrequency;
+uniform float uTintAmount;
+uniform vec3 uTintColor;
 varying vec2 vUv;
 varying vec3 vWorldPos;
 
 void main() {
   // Sample floor texture
   vec4 floorColor = texture2D(uFloorTex, vUv);
+  
+  // Apply tint color
+  floorColor.rgb = mix(floorColor.rgb, floorColor.rgb * uTintColor, uTintAmount);
   
   // Create distortion for caustics using sine waves (similar to vertex waves)
   float distortX = sin(vUv.y * uWaveFrequency * 0.5 + uTime * 0.4) * uCausticsDistortion;
