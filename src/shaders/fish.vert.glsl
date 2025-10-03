@@ -8,8 +8,6 @@ uniform int uPartCount;
 uniform float uParts[60];
 uniform float uGridProps[7];
 
-attribute mat4 instanceMatrix;
-
 varying vec2 vUv;
 varying vec3 vWorldPos;
 
