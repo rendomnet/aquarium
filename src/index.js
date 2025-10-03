@@ -36,8 +36,6 @@ const CONFIG = {
     fogDensity: 0.055,            // Underwater fog density
     ambientLight: 0.55,           // Ambient light intensity
     directionalLight: 0.7,        // Directional light intensity
-    depthBlur: 2.0,               // Depth-based blur intensity (0 = no blur, 5 = strong blur)
-    maxBlur: 0.5,                 // Maximum blur for fish at depthRange[0] (far end)
   },
   
   // Fish movement bounds
@@ -535,8 +533,6 @@ Object.keys(populationBySpecies).forEach(speciesName => {
       uCausticsBase: { value: CONFIG.caustics.fishBaseLight },
       uFogColor: { value: new THREE.Color(CONFIG.scene.fogColor) },
       uFogDensity: { value: CONFIG.scene.fogDensity },
-      uDepthBlur: { value: CONFIG.scene.depthBlur },
-      uMaxBlur: { value: CONFIG.scene.maxBlur },
       uDepthMin: { value: CONFIG.movement.depthRange[0] },
       uDepthMax: { value: CONFIG.movement.depthRange[1] },
       uTime: { value: 0 },

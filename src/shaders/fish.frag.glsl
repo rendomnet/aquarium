@@ -7,8 +7,6 @@ uniform float uCausticsIntensity;
 uniform float uCausticsBase;
 uniform vec3 uFogColor;
 uniform float uFogDensity;
-uniform float uDepthBlur;
-uniform float uMaxBlur;
 uniform float uDepthMin;
 uniform float uDepthMax;
 varying vec2 vUv;
@@ -18,34 +16,7 @@ void main() {
   // Calculate depth factor using actual depth range (0=far/depthMin, 1=near/depthMax)
   float depth = (vWorldPos.z - uDepthMin) / (uDepthMax - uDepthMin);
   depth = clamp(depth, 0.0, 1.0);
-  
-  // Apply depth-based Gaussian blur
-  // More blur for distant fish (low depth value)
-  // Use maxBlur for fish at depthMin, no blur at depthMax
-  float blurAmount = (1.0 - depth) * uMaxBlur * 0.01; // Scale blur
-  
-  vec4 c = vec4(0.0);
-  if (blurAmount > 0.001) {
-    // 9-tap Gaussian blur kernel
-    // Weights approximate Gaussian distribution
-    c += texture2D(uTex, vUv) * 0.2270270270;
-    
-    // First ring (4 samples)
-    c += texture2D(uTex, vUv + vec2(blurAmount, 0.0)) * 0.1945945946;
-    c += texture2D(uTex, vUv - vec2(blurAmount, 0.0)) * 0.1945945946;
-    c += texture2D(uTex, vUv + vec2(0.0, blurAmount)) * 0.1945945946;
-    c += texture2D(uTex, vUv - vec2(0.0, blurAmount)) * 0.1945945946;
-    
-    // Second ring (4 samples at diagonal)
-    float diag = blurAmount * 0.707; // sqrt(2)/2 for diagonal
-    c += texture2D(uTex, vUv + vec2(diag, diag)) * 0.0540540541;
-    c += texture2D(uTex, vUv - vec2(diag, diag)) * 0.0540540541;
-    c += texture2D(uTex, vUv + vec2(diag, -diag)) * 0.0540540541;
-    c += texture2D(uTex, vUv - vec2(diag, -diag)) * 0.0540540541;
-  } else {
-    // No blur for close fish
-    c = texture2D(uTex, vUv);
-  }
+  vec4 c = texture2D(uTex, vUv);
   
   if (c.a < 0.08) discard;
   
